@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- windows10.0.19041.0 TFM 自動啟用 WinRT 投影,Phase 1 可直接用 Windows.Media.Ocr -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.18362.0</SupportedOSPlatformVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>FlashGrab</RootNamespace>
+    <AssemblyName>FlashGrab</AssemblyName>
+    <Version>0.1.0</Version>
+    <!-- 多螢幕/混合 DPI 框選正確的前提 -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+</Project>
