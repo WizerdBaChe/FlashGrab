@@ -10,7 +10,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>FlashGrab</RootNamespace>
     <AssemblyName>FlashGrab</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.3.0</Version>
     <!-- 多螢幕/混合 DPI 框選正確的前提 -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
