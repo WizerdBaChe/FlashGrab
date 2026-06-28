@@ -83,3 +83,44 @@
 - **下一步 = Phase 2 討論**:Tier 1 安全規則(全半形正規化 + 純數字串 O→0/l→1)+ 程式碼模式(邊界框 X 推算縮排 + 規則符號修正);設定頁切換模式/語言。
 - **跨螢幕 / 混合 DPI 截取**:留待下次有多螢幕環境驗證;若錯位,改用 P/Invoke 強制物理像素定位。
 - C 類與混合 B 類字元錯誤的根治 = Phase 4 Tier 2 AI(本機 Phi Silica 需 Copilot+;雲端 API 須 opt-in)。
+
+---
+
+# Phase Checkpoint
+- Project: FlashGrab
+- Phase: Phase 2 – 智慧後處理層(結構化 OCR + Pipeline + 定格截圖)
+- Status: completed(實機驗證通過)
+- Date: 2026-06-29
+
+## Goals
+- 把 Tier 0 逐行文字升級成乾淨的結構化資料,預設忠實保留畫面結構。
+- OCR 引擎只暴露幾何,文字成形全移到可插拔 Pipeline。
+- 解決即時字幕/影片瞬間擷取。
+
+## Decisions
+- **反轉模式框架(第一性原理)**:預設「忠實模式」(保留行序/斷行 + 縮排還原 + 安全清理);「段落重排」降為罕用選配(tray 勾選)。理由:畫面行序通常即理解順序,而「合併斷行」是唯一會猜錯、會破壞資訊的動作 → 不該綁在每次取字。等於原「程式碼模式」變成預設,不需切換。
+- **結構化 OCR**:IOcrEngine 改回傳 OcrDocument(行→詞→邊界框,原始像素)。CJK 重組從 adapter 上移到 Pipeline(修正 Phase 1 「重建在 adapter」的決策)。
+- **定格截圖**:按鍵瞬間凍結 virtual screen,遮罩疊在快照上、選區外變暗、從快照裁切。解決即時字幕(擷取結果與框選耗時無關)+ 消除 60ms 延遲 + 消殘影。遮罩 client 座標即快照像素,免 PointToScreen。
+- **Tier 1 只放「絕對安全」規則**:全形英數→半形(**不碰** CJK 標點,否則破壞中文)、純數字串 O→0/l→1(嚴格 token 守衛:須含真數字且整段可成合法數字)。需語意脈絡者(中文標點↔ASCII、混合 O/0、箭頭)一律留 Tier 2,不過度承諾。
+- **縮排還原**:以所有詞「每字平均寬度」中位數估字寬;首詞左緣相對 baseLeft 換算空格數(門檻 0.6 字寬、上限 60)。左對齊文字縮排=0(無害),程式碼自然得縮排。
+
+## Changes
+- `Ocr/OcrModels.cs`: OcrDocument / OcrTextLine / OcrTextWord。
+- `Ocr/IOcrEngine.cs`: 回傳 OcrDocument。
+- `Ocr/WindowsMediaOcr.cs`: 結構化輸出、邊界框除以 2× 還原原始座標、可指定辨識語言(TryCreateFromLanguage,退回設定檔)。
+- `Pipeline/`: TextRules(CJK/終結標點)、ITextProcessor、LineReconstructor(CJK 空格+縮排+段落重排)、FullWidthNormalizer、DigitRunFixer、TextPipeline。
+- `Capture/ScreenGrabber.cs`: CaptureVirtualScreen + Crop。
+- `Capture/OverlayForm.cs`: 吃快照當背景、選區外變暗、回傳快照座標矩形。
+- `App/Settings.cs`: %AppData%\FlashGrab\settings.json(重排開關 + 語言標籤)。
+- `App/TrayApplicationContext.cs`: 串接流程、重排勾選、語言子選單、定格擷取。
+- Git: branch `feat/phase2-pipeline`,commit `f27b0ce`。
+
+## Verification
+- `dotnet build`:0 警告 0 錯誤。常駐 RAM ~54MB(debug/framework-dependent)。
+- 實機(使用者驗收):定格字幕擷取正確、變暗 UX、縮排還原、純數字 O/0 修正(且 lol/100GB/變數不誤改)、段落重排開關、語言自動偵測皆通過。
+
+## Open Questions / TODO
+- **下一步 = Phase 3 輕量封裝**:self-contained 單檔 + trim,量測 exe 體積與閒置 CPU/RAM,對齊「G-Helper 級」。Trim 可能裁掉 WinRT 互通型別 → 先 framework-dependent 驗證再逐步開 trim + TrimmerRootDescriptor。
+- **確認的邊界(Tier 0 天花板,非 bug)**:低對比 / 雜亂背景(尤其影片黑邊白字壓灰底)辨識掉字。根治留 Phase 4 Tier 2 AI;**不**在 Tier 1 塞脆弱影像前處理(對雜背景無效且傷乾淨文字)。
+- **已知小邊界**:置中文字各行左緣不一,縮排還原可能產生假縮排(忠實座標副作用)。
+- **跨螢幕 / 混合 DPI**:仍待多螢幕環境驗證。
