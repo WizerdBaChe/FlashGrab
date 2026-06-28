@@ -1,7 +1,7 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
-using System.Text;
+using Windows.Globalization;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Storage.Streams;
@@ -10,7 +10,8 @@ namespace FlashGrab.Ocr;
 
 /// <summary>
 /// Tier 0 地基引擎:Windows.Media.Ocr。全機型、離線、毫秒級。
-/// 回傳逐行文字(保留行結構),供 Phase 2 的後處理 Pipeline 進一步清理。
+/// 回傳結構化文字 + 邊界框(已還原放大倍率至原始像素座標),
+/// 文字成形(空格/縮排/正規化)一律交給後處理 Pipeline。
 /// </summary>
 internal sealed class WindowsMediaOcr : IOcrEngine
 {
@@ -20,9 +21,22 @@ internal sealed class WindowsMediaOcr : IOcrEngine
     /// </summary>
     private const float PreScale = 2f;
 
-    public async Task<string> RecognizeAsync(Bitmap bitmap)
+    private readonly string? _languageTag;
+
+    /// <param name="languageTag">
+    /// 指定辨識語言的 BCP-47 標籤(如 "zh-Hant"、"en");null 則用使用者設定檔語言。
+    /// </param>
+    public WindowsMediaOcr(string? languageTag = null)
     {
-        var engine = OcrEngine.TryCreateFromUserProfileLanguages();
+        _languageTag = languageTag;
+    }
+
+    /// <summary>目前系統可用的 OCR 辨識語言。供設定 UI 列出選項。</summary>
+    public static IReadOnlyList<Language> AvailableLanguages => OcrEngine.AvailableRecognizerLanguages;
+
+    public async Task<OcrDocument> RecognizeAsync(Bitmap bitmap)
+    {
+        OcrEngine? engine = CreateEngine();
         if (engine is null)
         {
             throw new InvalidOperationException(
@@ -35,16 +49,34 @@ internal sealed class WindowsMediaOcr : IOcrEngine
             using var softwareBitmap = await ToSoftwareBitmapAsync(prepared);
             var result = await engine.RecognizeAsync(softwareBitmap);
 
-            // 逐行重建文字以保留行結構;每行內以「CJK 感知」規則決定詞間是否加空格,
-            // 修正引擎把每個中文字當成獨立詞而插入空格的問題。
-            // Phase 2 會接手更高階的斷行合併/標點/全半形清理。
-            var sb = new StringBuilder();
+            var lines = new List<OcrTextLine>(result.Lines.Count);
             foreach (var line in result.Lines)
             {
-                sb.AppendLine(BuildLineText(line));
+                var words = new List<OcrTextWord>(line.Words.Count);
+                foreach (var word in line.Words)
+                {
+                    if (word.Text.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    var r = word.BoundingRect;
+                    // 邊界框是「放大後」座標,除以倍率還原至原始點陣圖像素
+                    var bounds = new RectangleF(
+                        (float)(r.X / PreScale),
+                        (float)(r.Y / PreScale),
+                        (float)(r.Width / PreScale),
+                        (float)(r.Height / PreScale));
+                    words.Add(new OcrTextWord(word.Text, bounds));
+                }
+
+                if (words.Count > 0)
+                {
+                    lines.Add(new OcrTextLine(words));
+                }
             }
 
-            return sb.ToString().TrimEnd();
+            return new OcrDocument(lines);
         }
         finally
         {
@@ -55,52 +87,20 @@ internal sealed class WindowsMediaOcr : IOcrEngine
         }
     }
 
-    /// <summary>
-    /// 把一行的詞重組成文字:僅當相鄰兩詞「兩側皆非 CJK」時才插入空格。
-    /// → 中文字字相連、英文單字間保留空格、中英交界不加空格(如「按Win」)。
-    /// </summary>
-    private static string BuildLineText(OcrLine line)
+    private OcrEngine? CreateEngine()
     {
-        var sb = new StringBuilder();
-        string? prev = null;
-
-        foreach (var word in line.Words)
+        if (_languageTag is not null)
         {
-            string w = word.Text;
-            if (w.Length == 0)
+            var lang = new Language(_languageTag);
+            var engine = OcrEngine.TryCreateFromLanguage(lang);
+            if (engine is not null)
             {
-                continue;
+                return engine;
             }
-
-            if (prev is not null && NeedsSpace(prev, w))
-            {
-                sb.Append(' ');
-            }
-
-            sb.Append(w);
-            prev = w;
+            // 指定語言不可用時退回使用者設定檔語言,避免直接失敗
         }
 
-        return sb.ToString();
-    }
-
-    private static bool NeedsSpace(string prev, string next)
-    {
-        char a = prev[^1];
-        char b = next[0];
-        return !IsCjk(a) && !IsCjk(b);
-    }
-
-    /// <summary>是否為不使用空格分詞的 CJK 字元(中日韓表意/假名/全形/CJK 標點)。</summary>
-    private static bool IsCjk(char c)
-    {
-        int u = c;
-        return (u >= 0x4E00 && u <= 0x9FFF)   // CJK 統一表意文字
-            || (u >= 0x3400 && u <= 0x4DBF)   // 擴充 A
-            || (u >= 0x3000 && u <= 0x303F)   // CJK 標點符號
-            || (u >= 0xFF00 && u <= 0xFFEF)   // 全形字元
-            || (u >= 0x3040 && u <= 0x30FF)   // 日文假名
-            || (u >= 0xAC00 && u <= 0xD7AF);  // 韓文音節
+        return OcrEngine.TryCreateFromUserProfileLanguages();
     }
 
     /// <summary>以高品質雙三次內插放大,提升小字辨識率。</summary>
