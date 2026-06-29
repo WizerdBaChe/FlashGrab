@@ -1,319 +1,163 @@
 # FlashGrab ⚡
 
-<<<<<<< HEAD
 🇹🇼 **[繁體中文](README.zh-TW.md)** | **English**
 
 > **Lightning-fast screen text extraction for Windows.**
 >
 > **Freeze. Grab. OCR. Copy.**
-=======
-> **Lightning-fast screen text extraction for Windows.**
->
-> **Freeze. Grab. OCR. Copy.**
-
-<p align="center">
-  <!-- Replace with your banner later -->
-  <img src="docs/banner.png" alt="FlashGrab Banner" width="900">
-</p>
 
 `Win + Shift + C` → **Freeze Frame** → **Offline OCR** → **Smart Cleanup** → **Clipboard**
 
-FlashGrab is an ultra-lightweight Windows screen text extraction tool inspired by the simplicity of G-Helper.
+---
 
-Unlike traditional OCR utilities, FlashGrab freezes the screen **the moment you press the shortcut**, allowing you to capture subtitles, videos, terminals and other dynamic content without racing against the screen.
+FlashGrab is an ultra-lightweight Windows screen text extraction tool inspired by the simplicity of G-Helper. 
+
+Unlike traditional OCR utilities, FlashGrab freezes the screen **the moment you press the shortcut**, allowing you to capture subtitles, videos, terminals, and other dynamic content without racing against the screen.
 
 By default, everything runs **100% offline** using Windows' built-in OCR engine. For difficult scenes, simply hold **Shift** when releasing the mouse to enable optional AI Vision enhancement.
->>>>>>> ac2ea3cc99890db9fcdc6e8d0892a166b820ba6e
 
-`Win + Shift + C` → Freeze Frame → Offline OCR → Smart Cleanup → Clipboard
-
-<<<<<<< HEAD
-FlashGrab is an ultra-lightweight Windows screen text extraction tool that freezes the screen instantly, extracts text using Windows' built-in OCR, restores clean formatting, and copies the result directly to your clipboard.
+---
 
 ## ✨ Features
 
-* ⚡ Instant Freeze Frame
-* 📴 Offline Windows OCR
-* 🇹🇼 Smart CJK spacing restoration
-* 💻 Code indentation recovery
-* 🧠 Optional AI Vision
+* ⚡ **Instant Freeze Frame** capture
+* 📴 **100% Offline** Windows OCR
+* 🇹🇼 **Smart CJK** spacing restoration
+* 💻 Automatic **code indentation** recovery
+* 🧠 Optional **AI Vision** enhancement (Ollama / Gemini / NIM)
 * 📋 Automatic clipboard copy
-* 🔒 Privacy-first (offline by default)
-=======
-## ✨ Features
+* 🔒 **Privacy-first** design (no background network activity)
 
-* ⚡ Instant Freeze Frame capture
-* 📴 100% Offline Windows OCR
-* 🇹🇼 Smart CJK spacing restoration
-* 💻 Automatic code indentation recovery
-* 🧠 Optional AI Vision enhancement
-* 📋 Automatic clipboard copy
-* 🔒 Privacy-first design (no background network activity)
->>>>>>> ac2ea3cc99890db9fcdc6e8d0892a166b820ba6e
+---
 
 ## 🚀 Why FlashGrab?
 
-<<<<<<< HEAD
-Unlike traditional OCR tools, FlashGrab freezes the screen **the moment you press the shortcut**.
-
-Perfect for:
-=======
-## 🚀 Why FlashGrab?
-
-Traditional OCR tools usually capture the screen **after** you finish selecting.
+Traditional OCR tools usually capture the screen *after* you finish selecting, which causes issues with moving text. 
 
 FlashGrab captures the screen **immediately when the shortcut is pressed**, so dynamic content stays exactly as you saw it.
 
-Perfect for:
+**Perfect for:**
+* Video subtitles & Live streams
+* Terminal output & Notifications
+* Presentations & PDF viewers
+* Documentation & Source code
 
-* Video subtitles
-* Live streams
-* Terminal output
-* Presentations
-* Notifications
-* PDF viewers
-* Documentation
-* Source code
->>>>>>> ac2ea3cc99890db9fcdc6e8d0892a166b820ba6e
+---
 
-* Video subtitles
-* Live streams
-* Terminal output
-* Presentations
-* Documentation
-* Source code
-
-<<<<<<< HEAD
-## ⌨️ Usage
-
-| Action                     | Result            |
-| -------------------------- | ----------------- |
-| Win + Shift + C            | Freeze screen     |
-| Drag                       | OCR selected area |
-| Hold Shift while releasing | AI Vision         |
-| Esc / Right Click          | Cancel            |
-
-## 📦 Releases
-=======
 ## ⚙️ How It Works
 
 ```
 Win + Shift + C
-        │
-        ▼
+       │
+       ▼
  Freeze Frame
-        │
-        ▼
+       │
+       ▼
   Offline OCR
-        │
-        ▼
+       │
+       ▼
  Smart Cleanup
-        │
-        ▼
- Clipboard
+       │
+       ▼
+   Clipboard
 ```
+*Hold **Shift** while releasing the mouse to replace the Offline OCR stage with AI Vision.*
 
-Hold **Shift** while releasing the mouse to replace the Offline OCR stage with AI Vision.
->>>>>>> ac2ea3cc99890db9fcdc6e8d0892a166b820ba6e
+---
 
-### FlashGrab.exe (Recommended)
-
-<<<<<<< HEAD
-* ~24 MB
-* Requires .NET 8 Desktop Runtime
-* Lowest memory usage
-
-### FlashGrab-Portable.exe
-
-* ~74 MB
-* Self-contained
-* No installation required
-
-## 🔒 Privacy
-
-FlashGrab is offline by default.
-
-No screenshots, OCR results or user data are uploaded unless an AI provider is explicitly configured.
-
-## 📄 License
-
-Licensed under the GNU General Public License v3.0 (GPL-3.0).
-=======
 ## 🧠 Recognition Pipeline
 
 ### Offline Mode (Default)
-
 FlashGrab uses Windows' native `Windows.Media.Ocr` engine together with several post-processing stages designed specifically for developers and CJK languages.
 
-### Smart CJK Cleanup
-
-Windows OCR often inserts spaces between every Chinese character.
-
-FlashGrab intelligently restores:
-
+#### 1. Smart CJK Cleanup
+Windows OCR often inserts spaces between every Chinese character. FlashGrab intelligently restores:
 ```
 這 是 一 段 文 字
 ```
-
-into
-
+↓
 ```
 這是一段文字
 ```
+*while preserving proper spacing between Chinese and English words.*
 
-while preserving proper spacing between Chinese and English.
+#### 2. Code Indentation Recovery
+FlashGrab estimates character width and reconstructs indentation levels automatically. Highly useful for structured or monospace source code like C#, C++, Python, JavaScript, JSON, and YAML.
 
----
-
-### Code Indentation Recovery
-
-FlashGrab estimates character width and reconstructs indentation levels automatically.
-
-Useful for:
-
-* C#
-* C++
-* Python
-* JavaScript
-* JSON
-* YAML
-
-and most monospace source code.
-
----
-
-### Safe Token Guard
-
-Safely normalizes OCR mistakes.
-
-Examples:
-
-```
-ＯpenAI
-```
-
-↓
-
-```
-OpenAI
-```
-
-```
-2O25
-```
-
-↓
-
-```
-2025
-```
-
-Corrections are only applied when they are considered safe, preventing accidental changes to identifiers or variable names.
+#### 3. Safe Token Guard
+Safely normalizes common OCR character mistakes under strict verification:
+* `ＯpenAI` → `OpenAI`
+* `2O25` → `2025`
 
 ---
 
 ## 🤖 AI Vision (Optional)
 
-Need even better recognition?
+Need even better recognition for low-contrast text or complex watermarks? Simply **hold Shift while releasing the mouse**. FlashGrab will use an OpenAI-compatible Vision model instead of the offline OCR engine.
 
-Simply **hold Shift while releasing the mouse**.
+* **Recommended Local Setup**: Ollama (e.g., `maternion/LightOnOCR-2`), LM Studio.
+* **Supported Cloud Providers**: Google Gemini, NVIDIA NIM, or any OpenAI-compatible Vision endpoint.
 
-FlashGrab will use an OpenAI-compatible Vision model instead of the offline OCR engine.
-
-Recommended local setup:
-
-* Ollama
-* LM Studio
-
-Supported cloud providers:
-
-* OpenAI-compatible APIs
-* Google Gemini
-* NVIDIA NIM
-
-AI mode is completely optional.
-
-If no AI backend is configured, FlashGrab remains **100% offline**.
+*AI mode is completely optional. If no AI backend is configured, FlashGrab remains **100% offline**.*
 
 ---
 
 ## ⌨️ Keyboard Shortcuts
 
-| Action                         | Result                            |
-| ------------------------------ | --------------------------------- |
-| **Win + Shift + C**            | Freeze screen and start selection |
-| Left Mouse Drag                | Select OCR region                 |
-| Hold **Shift** while releasing | Use AI Vision                     |
-| **Esc**                        | Cancel                            |
-| Right Mouse Button             | Cancel                            |
+| Action | Result |
+| :--- | :--- |
+| **Win + Shift + C** | Freeze screen and start selection |
+| **Left Mouse Drag** | Select OCR region |
+| **Hold Shift while releasing** | Trigger Tier 2 AI Vision |
+| **Esc** or **Right Click** | Cancel selection and exit |
 
 ---
 
 ## 📦 Releases
 
-Two editions are available.
+Two editions are available under the Releases page:
 
 ### FlashGrab.exe (Recommended)
-
 * ~24 MB
-* Requires .NET 8 Desktop Runtime
-* Lowest memory usage
-* Fastest startup
-
----
+* Requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+* Lowest memory usage & fastest startup
 
 ### FlashGrab-Portable.exe
-
 * ~74 MB
-* Self-contained
-* No runtime required
+* Self-contained (No runtime required)
 * Portable and USB-friendly
 
 ---
 
 ## ⚙️ Configuration
 
-Configuration file:
-
+Configuration file is automatically created at:
 ```
 %AppData%\FlashGrab\settings.json
 ```
-
-Example Ollama setup:
-
+For local Ollama setup, ensure your model is running before executing the AI grab:
 ```bash
 ollama run maternion/LightOnOCR-2
 ```
-
-Once configured, simply hold **Shift** after selecting an area to invoke AI Vision.
 
 ---
 
 ## 🔒 Privacy
 
-Privacy is a core design principle.
-
-By default FlashGrab:
-
-* Never uploads screenshots
-* Never sends OCR data anywhere
-* Never connects to the Internet
-* Never requires an API key
-
-Network access only occurs if you explicitly enable an AI provider.
+Privacy is a core design principle. By default, FlashGrab **never** uploads screenshots, **never** sends OCR data anywhere, and **never** requires internet access. Network requests only occur if you explicitly configure and opt-in to a cloud AI provider.
 
 ---
 
 ## 📊 Comparison
 
-| Feature                   | FlashGrab | PowerToys Text Extractor |
-| ------------------------- | :-------: | :----------------------: |
-| Freeze Frame Capture      |     ✅     |             ❌            |
-| Offline OCR               |     ✅     |             ✅            |
-| Smart CJK Cleanup         |     ✅     |             ❌            |
-| Code Indentation Recovery |     ✅     |             ❌            |
-| Optional AI Vision        |     ✅     |             ❌            |
-| Portable Version          |     ✅     |             ❌            |
+| Feature | FlashGrab | PowerToys Text Extractor |
+| :--- | :---: | :---: |
+| **Freeze Frame Capture** | ✅ | ❌ |
+| **Offline OCR** | ✅ | ✅ |
+| **Smart CJK Cleanup** | ✅ | ❌ |
+| **Code Indentation Recovery** | ✅ | ❌ |
+| **Optional AI Vision** | ✅ | ❌ |
+| **Portable Version** | ✅ | ❌ |
 
 ---
 
@@ -332,7 +176,4 @@ Network access only occurs if you explicitly enable an AI provider.
 
 ## 📄 License
 
-This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
-
-See the `LICENSE` file for details.
->>>>>>> ac2ea3cc99890db9fcdc6e8d0892a166b820ba6e
+This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**. See the `LICENSE` file for details.
