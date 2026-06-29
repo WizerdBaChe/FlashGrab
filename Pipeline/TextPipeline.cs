@@ -23,6 +23,12 @@ internal sealed class TextPipeline
 
     public string Run(OcrDocument document, bool reflowParagraphs)
     {
+        // Tier 2 VLM 已回傳成形文字:直接採用,不經幾何重建與安全規則(避免改壞)。
+        if (document.PreformattedText is not null)
+        {
+            return document.PreformattedText.TrimEnd();
+        }
+
         string text = LineReconstructor.Build(document, reflowParagraphs);
 
         foreach (var stage in _stages)

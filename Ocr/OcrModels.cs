@@ -9,6 +9,12 @@ namespace FlashGrab.Ocr;
 internal sealed record OcrDocument(IReadOnlyList<OcrTextLine> Lines)
 {
     public static readonly OcrDocument Empty = new(Array.Empty<OcrTextLine>());
+
+    /// <summary>
+    /// 非幾何引擎(Tier 2 VLM)直接回傳的「已成形文字」。
+    /// 設定時 Pipeline 略過幾何行重建與安全規則,原樣輸出(VLM 已忠實成形,額外規則反而可能改壞)。
+    /// </summary>
+    public string? PreformattedText { get; init; }
 }
 
 /// <summary>一行 OCR 結果:依閱讀順序排列的詞。</summary>
