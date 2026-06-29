@@ -12,15 +12,24 @@ internal sealed class OverlayForm : Form
 {
     private static readonly Color VeilColor = Color.FromArgb(110, 0, 0, 0);
 
+    private readonly bool _aiAvailable;
+
     private Point _start;
     private Rectangle _selection;
     private bool _selecting;
+    private bool _aiArmed; // 目前是否按住 Shift(AI 待命),用於即時視覺回饋
 
     /// <summary>框選結果(相對快照左上角的像素矩形)。未選取時為 null。</summary>
     public Rectangle? SelectedRegion { get; private set; }
 
-    public OverlayForm(Bitmap snapshot)
+    /// <summary>本次框選是否要求走 Tier 2 AI(僅當 AI 可用且放開時按住 Shift)。</summary>
+    public bool UseAiRequested { get; private set; }
+
+    /// <param name="aiAvailable">Tier 2 是否已啟用且設妥;true 時顯示「Shift = AI」提示並接受該修鍵。</param>
+    public OverlayForm(Bitmap snapshot, bool aiAvailable = false)
     {
+        _aiAvailable = aiAvailable;
+
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
@@ -53,6 +62,8 @@ internal sealed class OverlayForm : Form
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
+        RefreshArmed();
+
         if (_selecting)
         {
             _selection = Normalize(_start, e.Location);
@@ -71,6 +82,8 @@ internal sealed class OverlayForm : Form
             if (_selection.Width > 3 && _selection.Height > 3)
             {
                 SelectedRegion = _selection;
+                // 放開瞬間判定:AI 可用且按住 Shift → 本次走 Tier 2。
+                UseAiRequested = _aiAvailable && (ModifierKeys & Keys.Shift) == Keys.Shift;
                 DialogResult = DialogResult.OK;
             }
             else
@@ -91,7 +104,25 @@ internal sealed class OverlayForm : Form
             CancelAndClose();
         }
 
+        RefreshArmed();
         base.OnKeyDown(e);
+    }
+
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        RefreshArmed();
+        base.OnKeyUp(e);
+    }
+
+    /// <summary>依目前 Shift 狀態更新 AI 待命旗標,有變才重繪。</summary>
+    private void RefreshArmed()
+    {
+        bool armed = _aiAvailable && (ModifierKeys & Keys.Shift) == Keys.Shift;
+        if (armed != _aiArmed)
+        {
+            _aiArmed = armed;
+            Invalidate();
+        }
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -110,7 +141,7 @@ internal sealed class OverlayForm : Form
             e.Graphics.FillRectangle(veil, 0, s.Top, s.Left, s.Height);
             e.Graphics.FillRectangle(veil, s.Right, s.Top, client.Width - s.Right, s.Height);
 
-            using var pen = new Pen(Color.DeepSkyBlue, 2);
+            using var pen = new Pen(_aiArmed ? Color.Orange : Color.DeepSkyBlue, 2);
             e.Graphics.DrawRectangle(pen, s);
         }
         else
@@ -118,6 +149,30 @@ internal sealed class OverlayForm : Form
             // 尚未框選:整個畫面均勻變暗
             e.Graphics.FillRectangle(veil, client);
         }
+
+        if (_aiAvailable)
+        {
+            DrawAiHint(e.Graphics, client);
+        }
+    }
+
+    /// <summary>AI 可用時於頂端置中提示修鍵用法;按住 Shift 時即時切換為「AI 待命」橘字。</summary>
+    private void DrawAiHint(Graphics g, Rectangle client)
+    {
+        string hint = _aiArmed
+            ? "● AI 增強模式 — 放開即用 AI 辨識"
+            : "按住 Shift 放開 = AI 增強(否則用內建 OCR)";
+        Color fg = _aiArmed ? Color.Orange : Color.White;
+
+        using var font = new Font("Microsoft JhengHei UI", 11f, FontStyle.Bold);
+        var size = g.MeasureString(hint, font);
+        float x = (client.Width - size.Width) / 2f;
+        float y = 24f;
+
+        using var back = new SolidBrush(Color.FromArgb(170, 0, 0, 0));
+        g.FillRectangle(back, x - 12, y - 6, size.Width + 24, size.Height + 12);
+        using var fore = new SolidBrush(fg);
+        g.DrawString(hint, font, fore, x, y);
     }
 
     private void CancelAndClose()

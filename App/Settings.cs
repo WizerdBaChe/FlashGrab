@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace FlashGrab.App;
 
@@ -13,6 +14,28 @@ internal sealed class Settings
 
     /// <summary>偏好辨識語言 BCP-47 標籤(如 "zh-Hant");null = 使用者設定檔語言。</summary>
     public string? LanguageTag { get; set; }
+
+    // ── Phase 4:Tier 2 選配 AI(OpenAI 相容視覺端點),預設全關 ──
+
+    /// <summary>是否啟用 Tier 2。啟用後仍需框選時按住 Shift 才會走 AI;預設關閉。</summary>
+    public bool Tier2Enabled { get; set; }
+
+    /// <summary>OpenAI 相容端點 base URL(如 http://localhost:11434/v1 或 Gemini 端點)。</summary>
+    public string? Tier2BaseUrl { get; set; }
+
+    /// <summary>API 金鑰;本地 Ollama 留空即可。存於本機設定檔,不進任何發行物。</summary>
+    public string? Tier2ApiKey { get; set; }
+
+    /// <summary>模型名稱(如 gemini-2.5-flash、qwen2.5vl)。</summary>
+    public string? Tier2Model { get; set; }
+
+    /// <summary>是否已同意「雲端端點會將截圖外傳」的一次性告知(本地端點不需要)。</summary>
+    public bool Tier2CloudConsented { get; set; }
+
+    /// <summary>端點是否已備齊可用(base URL + 模型)。衍生屬性,不寫入設定檔。</summary>
+    [JsonIgnore]
+    public bool IsTier2Configured =>
+        !string.IsNullOrWhiteSpace(Tier2BaseUrl) && !string.IsNullOrWhiteSpace(Tier2Model);
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
