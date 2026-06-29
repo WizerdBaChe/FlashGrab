@@ -60,9 +60,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("結束", null, (_, _) => ExitApp());
 
-        _trayIcon = new NotifyIcon
+		_trayIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = (Environment.ProcessPath != null) 
+                ? Icon.ExtractAssociatedIcon(Environment.ProcessPath) 
+                : SystemIcons.Application,
             Text = "FlashGrab — 螢幕智慧取字 (Win+Shift+C)",
             Visible = true,
             ContextMenuStrip = menu,
