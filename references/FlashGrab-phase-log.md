@@ -160,3 +160,45 @@
 - **模型「非內建資源」方案**:後續討論(可能透過工具推送下載依賴,而非內建)。
 - **跨螢幕 / 混合 DPI**:仍待多螢幕環境驗證。
 - 發行檔未簽章 → 首次執行可能觸發 SmartScreen;簽章為將來發佈議題。
+
+# Phase Checkpoint
+- Project: FlashGrab
+- Phase: Phase 4 – 選配 AI 增強(Tier 2)
+- Status: completed
+- Date: 2026-06-29
+
+## Goals
+- 為 Phase 2 回報的「低對比/影片字幕誤讀」提供根治路徑:可插拔 Tier 2 視覺 OCR,預設關閉、不破壞 Tier 0。
+
+## Decisions
+- **Phi Silica 出局**:本機非 Copilot+/無 NPU,無法驗證且 Windows App SDK 依賴重。改走 Ollama 本地路線(同程式碼路徑),更通用。
+- **一套 OpenAI 相容引擎涵蓋全部後端**:本地(Ollama/LM Studio,離線)與雲端(Gemini/NIM/Mistral)只差 {baseUrl, apiKey, model}。調研證實主流供應商與本地引擎皆提供 `/chat/completions` + base64 影像。
+- **VLM 回傳成形文字**:`OcrDocument.PreformattedText` 由 Pipeline 原樣輸出,略過幾何行重建與安全規則(VLM 已忠實成形,額外規則反而改壞)。Tier 0 路徑完全不動。
+- **觸發 = 框選放開時按住 Shift**:一般快捷鍵仍走即時/免費/離線的 Tier 0;只有「這張難讀」才按 Shift 用 AI。遮罩即時回饋(橘框+提示)讓模式可見。
+- **隱私**:雲端端點首次使用一次性外傳告知並記住;本地標示離線私密。金鑰只存本機 `%AppData%\FlashGrab\settings.json`,不進任何發行物/commit。
+- **預設模型**:本地 = maternion/LightOnOCR-2(1.5GB,輕量,已驗證 CJK+低對比);Gemini = gemini-3.1-flash-lite(高額度、視覺驗證通過)。
+- **不打包模型/不背景常駐**:FlashGrab 維持輕量客戶端,連 Ollama 只在取字當下;閒置零負擔不變。
+
+## Changes
+- `Ocr/OpenAiCompatibleVisionOcr.cs`(新):Tier 2 引擎(base64 影像 → /chat/completions → 解析 → 去 ``` 圍欄)。
+- `Ocr/OcrModels.cs` / `Pipeline/TextPipeline.cs`:新增 PreformattedText 直通。
+- `App/Settings.cs`:Tier2 欄位(全預設關),IsTier2Configured 標 [JsonIgnore]。
+- `App/TrayApplicationContext.cs`:AI 子選單(啟用、預設 radio 打勾、狀態列、雲端同意、辨識中回饋)、本地 Ollama 防呆偵測(/api/tags)、引擎選擇。
+- `App/TextInputDialog.cs`(新):極簡單行輸入(金鑰遮蔽)。
+- `Capture/OverlayForm.cs`:Shift 當下選 AI + 即時待命視覺回饋。
+- `FlashGrab.csproj`:0.3.0 → 0.4.0。
+- Git:branch `feat/phase4-tier2-ai`(commits ea861e1 引擎、ca60536 app/UX)。
+
+## Verification
+- `dotnet build -c Release`:0 警告 0 錯誤。
+- Tier 2 引擎以真實程式碼路徑實測:
+  - 雲端 Gemini(gemini-2.5-flash / gemini-3.1-flash-lite):低對比中英、多行縮排皆忠實。
+  - 本地 LightOnOCR-2(離線免金鑰):同兩種圖皆正確。
+- Tier 0 路徑邏輯未動(僅在有 PreformattedText 時 early-return)。
+- GUI 互動(定格+Shift 即時回饋+托盤 radio+同意框+辨識中氣泡)屬視覺/UX,待實機確認。
+
+## Open Questions / TODO
+- AI 路徑的段落重排:目前 VLM 一律忠實,reflow 開關不影響 AI(可後續加)。
+- 本地模型自動列舉:已用 /api/tags 防呆;未來可做下拉自動選單。
+- bbox 變體:若要 AI 路徑也吃幾何(縮排還原)可換 LightOnOCR bbox 版。
+- 沿用既有 TODO:跨螢幕/混合 DPI 驗證、exe 簽章、模型「非內建資源」方案。
