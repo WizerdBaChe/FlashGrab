@@ -1,60 +1,270 @@
-# FlashGrab ⚡️
+# FlashGrab ⚡
 
-> **G-Helper 級極致輕量、無安裝、開機即用的螢幕智慧取字桌面工具。**
+> **Lightning-fast screen text extraction for Windows.**
+>
+> **Freeze. Grab. OCR. Copy.**
 
-`Win+Shift+C` 框選 ➡️ 智慧定格 ➡️ 離線 Windows OCR / AI 視覺雙階清理 ➡️ 乾淨文字秒進剪貼簿。
+<p align="center">
+  <!-- Replace with your banner later -->
+  <img src="docs/banner.png" alt="FlashGrab Banner" width="900">
+</p>
 
----
+`Win + Shift + C` → **Freeze Frame** → **Offline OCR** → **Smart Cleanup** → **Clipboard**
 
-## 🚀 核心特色
+FlashGrab is an ultra-lightweight Windows screen text extraction tool inspired by the simplicity of G-Helper.
 
-### 1. 雙階智慧辨識架構 (Tiered OCR Pipeline)
-- **Tier 0 + Tier 1 (預設離線模式)**：採用 Windows 原生 `Windows.Media.Ocr` 引擎，搭配專為亞洲語系打造的智慧清理 Pipeline。
-  - **CJK 智慧空格消除**：根治微軟 OCR 中文逐字插空格的通病，自動識別中英文邊界，還原乾淨無瑕的中文段落。
-  - **程式碼縮排還原**：自動計算畫面字寬中位數，精準還原程式碼的左側縮排層級（Indent）。
-  - **嚴格 token 守衛**：自動修正全形英數為半形，並在純數字情境下安全修正 `O ➡️ 0` 或 `l ➡️ 1`，絕不誤改變數名稱。
-- **Tier 2 (選配 AI 增強模式)**：框選放開時**按住 `Shift` 鍵**觸發。採用 OpenAI 相容通用視覺引擎：
-  - **離線私密**：直連本地 **Ollama / LM Studio**（預設推薦 `LightOnOCR-2` 模型），100% 離線安全。
-  - **雲端高速**：支援 **Gemini / NVIDIA NIM** 等 API 接頭，金鑰僅儲存於本地 `%AppData%`。
-  - **完美根治**：專治低對比度、雜亂背景、影片黑邊白字、或是規則無法還原的標點符號與特殊箭頭。
+Unlike traditional OCR utilities, FlashGrab freezes the screen **the moment you press the shortcut**, allowing you to capture subtitles, videos, terminals and other dynamic content without racing against the screen.
 
-### 2. 極致效能與 UX 體驗
-- **定格截圖 (Freeze Frame)**：按鍵瞬間立刻凍結螢幕快照，徹底解決即時字幕、動態影片因框選時間差導致的殘影或掉字問題。
-- **極輕量純淨常駐**：事件驅動設計，閒置時 CPU 使用率為 0%，常駐記憶體僅約 40MB~54MB。
-- **無網路承諾**：AI 功能完全採取 Opt-in（主動加入）制，不設定 API Key 或不啟動 Ollama 時，100% 純離線運行，絕不暗中外傳隱私。
+By default, everything runs **100% offline** using Windows' built-in OCR engine. For difficult scenes, simply hold **Shift** when releasing the mouse to enable optional AI Vision enhancement.
 
 ---
 
-## 🛠 快捷鍵與操作說明
+## ✨ Features
 
-| 動作 | 觸發效果 | 適用場景 |
-| :--- | :--- | :--- |
-| **`Win + Shift + C`** | 觸發螢幕定格，進入變暗遮罩選區 | 開始取字 |
-| **滑鼠左鍵拖曳** | 劃定取字範圍，放開即完成辨識 | 標準流程 |
-| **滑鼠放開時「按住 `Shift`」** | 畫面出現橘框提示，改用 **Tier 2 AI 視覺模型** | 低對比、複雜字幕、程式碼 |
-| **`Esc` 或 滑鼠右鍵** | 取消本次擷取 | 隨時退出 |
-
----
-
-## 📦 產出版本說明 (Releases)
-
-本工具免安裝，下載單一 `.exe` 檔案即可開箱即用。對齊開源輕量標竿，體積遠比動輒 300MB 的 PowerToys Text Extractor 更精簡：
-
-1. **`FlashGrab.exe` (約 24MB，推薦)**
-   - **依賴**：需安裝 [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)。
-   - **優點**：與系統共用 Runtime，最省記憶體（Working Set ~57MB）。
-2. **`FlashGrab-Portable.exe` (約 74MB)**
-   - **依賴**：免任何前置環境，純單檔自含（Self-contained）。
-   - **優點**：隨身碟隨插即用，適合封閉或無網路安裝環境。
+* ⚡ Instant Freeze Frame capture
+* 📴 100% Offline Windows OCR
+* 🇹🇼 Smart CJK spacing restoration
+* 💻 Automatic code indentation recovery
+* 🧠 Optional AI Vision enhancement
+* 📋 Automatic clipboard copy
+* 🔒 Privacy-first design (no background network activity)
 
 ---
 
-## ⚙️ 設定與 AI 組態
+## 🚀 Why FlashGrab?
 
-首次啟動後，設定檔會自動生成於：
-`%AppData%\FlashGrab\settings.json`
+Traditional OCR tools usually capture the screen **after** you finish selecting.
 
-### Ollama 本地模型推薦設定
-若要啟用本地免金鑰的 Tier 2 增強，請先確保本地 Ollama 已啟動，並安裝視覺模型：
+FlashGrab captures the screen **immediately when the shortcut is pressed**, so dynamic content stays exactly as you saw it.
+
+Perfect for:
+
+* Video subtitles
+* Live streams
+* Terminal output
+* Presentations
+* Notifications
+* PDF viewers
+* Documentation
+* Source code
+
+---
+
+## ⚙️ How It Works
+
+```
+Win + Shift + C
+        │
+        ▼
+ Freeze Frame
+        │
+        ▼
+  Offline OCR
+        │
+        ▼
+ Smart Cleanup
+        │
+        ▼
+ Clipboard
+```
+
+Hold **Shift** while releasing the mouse to replace the Offline OCR stage with AI Vision.
+
+---
+
+## 🧠 Recognition Pipeline
+
+### Offline Mode (Default)
+
+FlashGrab uses Windows' native `Windows.Media.Ocr` engine together with several post-processing stages designed specifically for developers and CJK languages.
+
+### Smart CJK Cleanup
+
+Windows OCR often inserts spaces between every Chinese character.
+
+FlashGrab intelligently restores:
+
+```
+這 是 一 段 文 字
+```
+
+into
+
+```
+這是一段文字
+```
+
+while preserving proper spacing between Chinese and English.
+
+---
+
+### Code Indentation Recovery
+
+FlashGrab estimates character width and reconstructs indentation levels automatically.
+
+Useful for:
+
+* C#
+* C++
+* Python
+* JavaScript
+* JSON
+* YAML
+
+and most monospace source code.
+
+---
+
+### Safe Token Guard
+
+Safely normalizes OCR mistakes.
+
+Examples:
+
+```
+ＯpenAI
+```
+
+↓
+
+```
+OpenAI
+```
+
+```
+2O25
+```
+
+↓
+
+```
+2025
+```
+
+Corrections are only applied when they are considered safe, preventing accidental changes to identifiers or variable names.
+
+---
+
+## 🤖 AI Vision (Optional)
+
+Need even better recognition?
+
+Simply **hold Shift while releasing the mouse**.
+
+FlashGrab will use an OpenAI-compatible Vision model instead of the offline OCR engine.
+
+Recommended local setup:
+
+* Ollama
+* LM Studio
+
+Supported cloud providers:
+
+* OpenAI-compatible APIs
+* Google Gemini
+* NVIDIA NIM
+
+AI mode is completely optional.
+
+If no AI backend is configured, FlashGrab remains **100% offline**.
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Action                         | Result                            |
+| ------------------------------ | --------------------------------- |
+| **Win + Shift + C**            | Freeze screen and start selection |
+| Left Mouse Drag                | Select OCR region                 |
+| Hold **Shift** while releasing | Use AI Vision                     |
+| **Esc**                        | Cancel                            |
+| Right Mouse Button             | Cancel                            |
+
+---
+
+## 📦 Releases
+
+Two editions are available.
+
+### FlashGrab.exe (Recommended)
+
+* ~24 MB
+* Requires .NET 8 Desktop Runtime
+* Lowest memory usage
+* Fastest startup
+
+---
+
+### FlashGrab-Portable.exe
+
+* ~74 MB
+* Self-contained
+* No runtime required
+* Portable and USB-friendly
+
+---
+
+## ⚙️ Configuration
+
+Configuration file:
+
+```
+%AppData%\FlashGrab\settings.json
+```
+
+Example Ollama setup:
+
 ```bash
 ollama run maternion/LightOnOCR-2
+```
+
+Once configured, simply hold **Shift** after selecting an area to invoke AI Vision.
+
+---
+
+## 🔒 Privacy
+
+Privacy is a core design principle.
+
+By default FlashGrab:
+
+* Never uploads screenshots
+* Never sends OCR data anywhere
+* Never connects to the Internet
+* Never requires an API key
+
+Network access only occurs if you explicitly enable an AI provider.
+
+---
+
+## 📊 Comparison
+
+| Feature                   | FlashGrab | PowerToys Text Extractor |
+| ------------------------- | :-------: | :----------------------: |
+| Freeze Frame Capture      |     ✅     |             ❌            |
+| Offline OCR               |     ✅     |             ✅            |
+| Smart CJK Cleanup         |     ✅     |             ❌            |
+| Code Indentation Recovery |     ✅     |             ❌            |
+| Optional AI Vision        |     ✅     |             ❌            |
+| Portable Version          |     ✅     |             ❌            |
+
+---
+
+## 🛠 Roadmap
+
+* ✅ Freeze Frame capture
+* ✅ Offline OCR
+* ✅ Smart CJK cleanup
+* ✅ Code indentation recovery
+* ✅ AI Vision enhancement
+* ⬜ Translation
+* ⬜ Table recognition
+* ⬜ Batch OCR
+
+---
+
+## 📄 License
+
+This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
+
+See the `LICENSE` file for details.
