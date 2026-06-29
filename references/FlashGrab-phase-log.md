@@ -124,3 +124,39 @@
 - **確認的邊界(Tier 0 天花板,非 bug)**:低對比 / 雜亂背景(尤其影片黑邊白字壓灰底)辨識掉字。根治留 Phase 4 Tier 2 AI;**不**在 Tier 1 塞脆弱影像前處理(對雜背景無效且傷乾淨文字)。
 - **已知小邊界**:置中文字各行左緣不一,縮排還原可能產生假縮排(忠實座標副作用)。
 - **跨螢幕 / 混合 DPI**:仍待多螢幕環境驗證。
+
+---
+
+# Phase Checkpoint
+- Project: FlashGrab
+- Phase: Phase 3 – 輕量封裝(發行成品)
+- Status: completed
+- Date: 2026-06-29
+
+## Goals
+- 兌現「G-Helper 級、無安裝、開機即用」:產出單一 exe 發行檔,量測體積與閒置資源。
+
+## Decisions
+- **trim 出局**:WinForms 啟用 trim 直接被 SDK 硬擋(NETSDK1175,官方不支援);強開要用未支援 hack 且極可能弄壞 WinRT OCR 載入。故自含體積極限就是壓縮後 ~74MB。
+- **兩種成品都出,fd 為主推**:G-Helper 本身就是 framework-dependent(官方拒出自含,理由=體積暴增、.NET 8 LTS 多已安裝)。對齊之,主推 fd;另附自含給無 runtime 者。
+  - `FlashGrab.exe`:framework-dependent 單檔,24.4MB,需 .NET 8 Desktop Runtime。
+  - `FlashGrab-Portable.exe`:自含 + 壓縮 + IncludeNativeLibrariesForSelfExtract → 真・單一 exe,74.3MB,無前置。
+- **模型永不打包**:Tier 2 為能力偵測/外掛(Phi Silica 屬 Windows、雲端僅 API key)。主程式不因功能膨脹(未來加的是 KB 級程式碼)。**未來模型或有「非內建資源」可用 → 後續討論。**
+- 對手定位:PowerToys 安裝包約 270–343MB(整套件),本工具兩版皆遠輕(1/4 ~ 1/14)。
+
+## Changes
+- `publish.ps1`: 一鍵產出兩種單檔成品到 publish\dist(DebugType=none 去 pdb)。
+- Git: branch `feat/phase3-packaging`,commit `1fe4263`。
+
+## Verification
+- `dotnet publish` 兩版皆 0 錯誤;產出真・單一 exe。
+- 實機啟動:兩版皆正常常駐,閒置 CPU≈0(事件驅動)。
+  - fd:Working Set ~57MB / Private ~11MB(共用系統 runtime,最省)。
+  - portable:Working Set ~145MB / Private ~51MB(單檔解壓到記憶體所致)。
+- 單一實例 mutex 正常(同時啟動第二個會乾淨退出 0)。
+
+## Open Questions / TODO
+- **下一步 = Phase 4 選配 AI(Tier 2)**:能力偵測;Copilot+ 走 Phi Silica/AI OCR 根治低對比與字元錯誤,其他機型提供雲端 API key(預設關)。
+- **模型「非內建資源」方案**:後續討論(可能透過工具推送下載依賴,而非內建)。
+- **跨螢幕 / 混合 DPI**:仍待多螢幕環境驗證。
+- 發行檔未簽章 → 首次執行可能觸發 SmartScreen;簽章為將來發佈議題。
