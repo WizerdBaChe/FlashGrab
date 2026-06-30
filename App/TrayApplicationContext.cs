@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Media;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using FlashGrab.Capture;
 using FlashGrab.Ocr;
 using FlashGrab.Output;
@@ -23,37 +24,49 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private IOcrEngine _ocr;
     private bool _capturing;
+    private bool _hotkeyOk;
 
-    // AI 子選單裡需即時更新狀態的項目
+    // 第二實例喚醒第一實例用的具名事件 + 用來把該通知 marshal 回 UI 執行緒的同步內容
+    private readonly EventWaitHandle _showSignal;
+    private SynchronizationContext? _ui;
+
+    // 設定視窗儲存後需同步勾選狀態的托盤項目
+    private ToolStripMenuItem _reflowItem = null!;
+    private ToolStripMenuItem _languageRoot = null!;
     private ToolStripMenuItem _aiEnableItem = null!;
     private ToolStripMenuItem _aiStatusItem = null!;
     private ToolStripMenuItem _presetsRoot = null!;
 
-    private const string GeminiBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
-    private const string NimBaseUrl = "https://integrate.api.nvidia.com/v1";
-    private const string OllamaBaseUrl = "http://localhost:11434/v1";
-    private const string DefaultLocalModel = "maternion/LightOnOCR-2:latest";
+    internal const string GeminiBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
+    internal const string NimBaseUrl = "https://integrate.api.nvidia.com/v1";
+    internal const string OllamaBaseUrl = "http://localhost:11434/v1";
+    internal const string DefaultLocalModel = "maternion/LightOnOCR-2:latest";
 
-    public TrayApplicationContext()
+    public TrayApplicationContext(EventWaitHandle showSignal)
     {
+        _showSignal = showSignal;
         _ocr = new WindowsMediaOcr(_settings.LanguageTag);
 
         var menu = new ContextMenuStrip();
 
-        var reflowItem = new ToolStripMenuItem("段落重排(抄文章用)")
+        menu.Items.Add("設定…", null, (_, _) => OpenSettings());
+        menu.Items.Add(new ToolStripSeparator());
+
+        _reflowItem = new ToolStripMenuItem("段落重排(抄文章用)")
         {
             CheckOnClick = true,
             Checked = _settings.ReflowParagraphs,
             ToolTipText = "開啟:把視覺軟換行併成段落。預設關閉=忠實保留畫面行序。",
         };
-        reflowItem.CheckedChanged += (_, _) =>
+        _reflowItem.CheckedChanged += (_, _) =>
         {
-            _settings.ReflowParagraphs = reflowItem.Checked;
+            _settings.ReflowParagraphs = _reflowItem.Checked;
             _settings.Save();
         };
-        menu.Items.Add(reflowItem);
+        menu.Items.Add(_reflowItem);
 
-        menu.Items.Add(BuildLanguageMenu());
+        _languageRoot = BuildLanguageMenu();
+        menu.Items.Add(_languageRoot);
         menu.Items.Add(BuildAiMenu());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("關於 FlashGrab", null, (_, _) => ShowAbout());
@@ -72,14 +85,104 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _hotkey = new GlobalHotkey();
         _hotkey.HotkeyPressed += OnHotkeyPressed;
+        _hotkeyOk = _hotkey.Register(ModifierKeys.Win | ModifierKeys.Shift, Keys.C);
 
-        if (!_hotkey.Register(ModifierKeys.Win | ModifierKeys.Shift, Keys.C))
+        // 啟動反饋(toast / 首次歡迎)需在訊息迴圈就緒後才能可靠顯示並捕捉 UI 同步內容,
+        // 故用一次性 Timer 延到迴圈啟動後執行(建構子此刻迴圈尚未開始)。
+        var startup = new System.Windows.Forms.Timer { Interval = 1 };
+        startup.Tick += (_, _) =>
+        {
+            startup.Stop();
+            startup.Dispose();
+            _ui = SynchronizationContext.Current;
+            OnStarted();
+        };
+        startup.Start();
+
+        StartSecondInstanceListener();
+    }
+
+    /// <summary>訊息迴圈就緒後執行一次:啟動 toast + 首次歡迎視窗。</summary>
+    private void OnStarted()
+    {
+        if (!_hotkeyOk)
         {
             _trayIcon.ShowBalloonTip(
-                3000, "FlashGrab",
-                "全域快捷鍵 Win+Shift+C 註冊失敗(可能已被其他程式佔用)。",
+                4000, "FlashGrab",
+                "已在背景執行,但全域快捷鍵 Win+Shift+C 註冊失敗(可能被其他程式佔用)。",
                 ToolTipIcon.Warning);
         }
+        else
+        {
+            _trayIcon.ShowBalloonTip(
+                2500, "FlashGrab",
+                "已在背景執行 · 按 Win + Shift + C 開始取字", ToolTipIcon.Info);
+        }
+
+        if (!_settings.WelcomeShown)
+        {
+            _settings.WelcomeShown = true;
+            _settings.Save();
+            WelcomeForm.Show(_trayIcon.Icon, OpenSettings);
+        }
+    }
+
+    /// <summary>第二實例透過具名事件喚醒時,在第一實例跳「已在執行中」氣泡。</summary>
+    private void StartSecondInstanceListener()
+    {
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                while (true)
+                {
+                    _showSignal.WaitOne();
+                    _ui?.Post(_ => ShowAlreadyRunning(), null);
+                }
+            }
+            catch
+            {
+                // 程序結束、handle 釋放時的例外屬正常退出,忽略。
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "FlashGrab.SignalListener",
+        };
+        thread.Start();
+    }
+
+    private void ShowAlreadyRunning()
+    {
+        _trayIcon.ShowBalloonTip(
+            2000, "FlashGrab",
+            "已在執行中 — 看右下角系統匣圖示,或直接按 Win + Shift + C。",
+            ToolTipIcon.Info);
+    }
+
+    /// <summary>開啟正規設定視窗(供首次歡迎視窗與托盤「設定…」共用)。</summary>
+    private void OpenSettings()
+    {
+        SettingsForm.Show(_settings, WindowsMediaOcr.AvailableLanguages, _trayIcon.Icon, ApplySettingsChanges);
+    }
+
+    /// <summary>設定視窗儲存後:重建 OCR 引擎並同步托盤選單的勾選狀態。</summary>
+    private void ApplySettingsChanges()
+    {
+        _ocr = new WindowsMediaOcr(_settings.LanguageTag);
+        _reflowItem.Checked = _settings.ReflowParagraphs;
+
+        foreach (ToolStripItem item in _languageRoot.DropDownItems)
+        {
+            if (item is ToolStripMenuItem mi)
+            {
+                mi.Checked = (mi.Tag as string) == _settings.LanguageTag
+                    || (mi.Tag is null && _settings.LanguageTag is null);
+            }
+        }
+
+        _aiEnableItem.Checked = _settings.Tier2Enabled && _settings.IsTier2Configured;
+        UpdateAiStatus();
     }
 
     private ToolStripMenuItem BuildLanguageMenu()
@@ -256,7 +359,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     /// <summary>查詢本地 Ollama 已安裝模型;服務不可達回 null。</summary>
-    private static async Task<List<string>?> ProbeOllamaModelsAsync()
+    internal static async Task<List<string>?> ProbeOllamaModelsAsync()
     {
         try
         {
@@ -299,7 +402,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void EditModel()
     {
         string? model = TextInputDialog.Show("設定模型",
-            "模型名稱(如 gemini-2.5-flash、qwen2.5vl)。", _settings.Tier2Model);
+            "模型名稱(如 gemini-3.1-flash-lite、qwen2.5vl)。", _settings.Tier2Model);
         if (model is null || string.IsNullOrWhiteSpace(model))
         {
             return;
@@ -474,7 +577,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private static void ShowAbout()
     {
         MessageBox.Show(
-            "FlashGrab v0.4(Phase 4 選配 AI 增強)\n\n" +
+            "FlashGrab v0.4.1(Phase 4 選配 AI 增強)\n\n" +
             "一鍵喚醒 Windows 原生 OCR,將螢幕上的文字與程式碼\n化為剪貼簿裡乾淨的結構化資料。\n\n" +
             "快捷鍵:Win + Shift + C\n" +
             "AI 增強(選配):框選時按住 Shift,改用視覺模型\n(本地 Ollama 離線,或免費/付費雲端)。",
@@ -494,6 +597,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             _hotkey.Dispose();
             _trayIcon.Dispose();
+            _showSignal.Dispose(); // 監聽執行緒為背景緒,程序結束時隨之終止
         }
 
         base.Dispose(disposing);
