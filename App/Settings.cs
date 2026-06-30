@@ -15,6 +15,9 @@ internal sealed class Settings
     /// <summary>偏好辨識語言 BCP-47 標籤(如 "zh-Hant");null = 使用者設定檔語言。</summary>
     public string? LanguageTag { get; set; }
 
+    /// <summary>是否已顯示過首次執行的歡迎視窗;之後啟動只剩托盤 toast,維持無感。</summary>
+    public bool WelcomeShown { get; set; }
+
     // ── Phase 4:Tier 2 選配 AI(OpenAI 相容視覺端點),預設全關 ──
 
     /// <summary>是否啟用 Tier 2。啟用後仍需框選時按住 Shift 才會走 AI;預設關閉。</summary>

@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Media;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using FlashGrab.Capture;
 using FlashGrab.Ocr;
 using FlashGrab.Output;
@@ -23,6 +24,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private IOcrEngine _ocr;
     private bool _capturing;
+    private bool _hotkeyOk;
+
+    // 第二實例喚醒第一實例用的具名事件 + 用來把該通知 marshal 回 UI 執行緒的同步內容
+    private readonly EventWaitHandle _showSignal;
+    private SynchronizationContext? _ui;
 
     // AI 子選單裡需即時更新狀態的項目
     private ToolStripMenuItem _aiEnableItem = null!;
@@ -34,8 +40,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private const string OllamaBaseUrl = "http://localhost:11434/v1";
     private const string DefaultLocalModel = "maternion/LightOnOCR-2:latest";
 
-    public TrayApplicationContext()
+    public TrayApplicationContext(EventWaitHandle showSignal)
     {
+        _showSignal = showSignal;
         _ocr = new WindowsMediaOcr(_settings.LanguageTag);
 
         var menu = new ContextMenuStrip();
@@ -72,14 +79,85 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _hotkey = new GlobalHotkey();
         _hotkey.HotkeyPressed += OnHotkeyPressed;
+        _hotkeyOk = _hotkey.Register(ModifierKeys.Win | ModifierKeys.Shift, Keys.C);
 
-        if (!_hotkey.Register(ModifierKeys.Win | ModifierKeys.Shift, Keys.C))
+        // 啟動反饋(toast / 首次歡迎)需在訊息迴圈就緒後才能可靠顯示並捕捉 UI 同步內容,
+        // 故用一次性 Timer 延到迴圈啟動後執行(建構子此刻迴圈尚未開始)。
+        var startup = new System.Windows.Forms.Timer { Interval = 1 };
+        startup.Tick += (_, _) =>
+        {
+            startup.Stop();
+            startup.Dispose();
+            _ui = SynchronizationContext.Current;
+            OnStarted();
+        };
+        startup.Start();
+
+        StartSecondInstanceListener();
+    }
+
+    /// <summary>訊息迴圈就緒後執行一次:啟動 toast + 首次歡迎視窗。</summary>
+    private void OnStarted()
+    {
+        if (!_hotkeyOk)
         {
             _trayIcon.ShowBalloonTip(
-                3000, "FlashGrab",
-                "全域快捷鍵 Win+Shift+C 註冊失敗(可能已被其他程式佔用)。",
+                4000, "FlashGrab",
+                "已在背景執行,但全域快捷鍵 Win+Shift+C 註冊失敗(可能被其他程式佔用)。",
                 ToolTipIcon.Warning);
         }
+        else
+        {
+            _trayIcon.ShowBalloonTip(
+                2500, "FlashGrab",
+                "已在背景執行 · 按 Win + Shift + C 開始取字", ToolTipIcon.Info);
+        }
+
+        if (!_settings.WelcomeShown)
+        {
+            _settings.WelcomeShown = true;
+            _settings.Save();
+            WelcomeForm.Show(_trayIcon.Icon, ShowSettingsMenu);
+        }
+    }
+
+    /// <summary>第二實例透過具名事件喚醒時,在第一實例跳「已在執行中」氣泡。</summary>
+    private void StartSecondInstanceListener()
+    {
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                while (true)
+                {
+                    _showSignal.WaitOne();
+                    _ui?.Post(_ => ShowAlreadyRunning(), null);
+                }
+            }
+            catch
+            {
+                // 程序結束、handle 釋放時的例外屬正常退出,忽略。
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "FlashGrab.SignalListener",
+        };
+        thread.Start();
+    }
+
+    private void ShowAlreadyRunning()
+    {
+        _trayIcon.ShowBalloonTip(
+            2000, "FlashGrab",
+            "已在執行中 — 看右下角系統匣圖示,或直接按 Win + Shift + C。",
+            ToolTipIcon.Info);
+    }
+
+    /// <summary>在游標處彈出托盤右鍵設定選單(供首次歡迎視窗的「開啟設定」用)。</summary>
+    private void ShowSettingsMenu()
+    {
+        _trayIcon.ContextMenuStrip?.Show(Cursor.Position);
     }
 
     private ToolStripMenuItem BuildLanguageMenu()
@@ -474,7 +552,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private static void ShowAbout()
     {
         MessageBox.Show(
-            "FlashGrab v0.4(Phase 4 選配 AI 增強)\n\n" +
+            "FlashGrab v0.4.1(Phase 4 選配 AI 增強)\n\n" +
             "一鍵喚醒 Windows 原生 OCR,將螢幕上的文字與程式碼\n化為剪貼簿裡乾淨的結構化資料。\n\n" +
             "快捷鍵:Win + Shift + C\n" +
             "AI 增強(選配):框選時按住 Shift,改用視覺模型\n(本地 Ollama 離線,或免費/付費雲端)。",
@@ -494,6 +572,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             _hotkey.Dispose();
             _trayIcon.Dispose();
+            _showSignal.Dispose(); // 監聽執行緒為背景緒,程序結束時隨之終止
         }
 
         base.Dispose(disposing);
