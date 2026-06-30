@@ -30,15 +30,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly EventWaitHandle _showSignal;
     private SynchronizationContext? _ui;
 
-    // AI 子選單裡需即時更新狀態的項目
+    // 設定視窗儲存後需同步勾選狀態的托盤項目
+    private ToolStripMenuItem _reflowItem = null!;
+    private ToolStripMenuItem _languageRoot = null!;
     private ToolStripMenuItem _aiEnableItem = null!;
     private ToolStripMenuItem _aiStatusItem = null!;
     private ToolStripMenuItem _presetsRoot = null!;
 
-    private const string GeminiBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
-    private const string NimBaseUrl = "https://integrate.api.nvidia.com/v1";
-    private const string OllamaBaseUrl = "http://localhost:11434/v1";
-    private const string DefaultLocalModel = "maternion/LightOnOCR-2:latest";
+    internal const string GeminiBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
+    internal const string NimBaseUrl = "https://integrate.api.nvidia.com/v1";
+    internal const string OllamaBaseUrl = "http://localhost:11434/v1";
+    internal const string DefaultLocalModel = "maternion/LightOnOCR-2:latest";
 
     public TrayApplicationContext(EventWaitHandle showSignal)
     {
@@ -47,20 +49,24 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         var menu = new ContextMenuStrip();
 
-        var reflowItem = new ToolStripMenuItem("段落重排(抄文章用)")
+        menu.Items.Add("設定…", null, (_, _) => OpenSettings());
+        menu.Items.Add(new ToolStripSeparator());
+
+        _reflowItem = new ToolStripMenuItem("段落重排(抄文章用)")
         {
             CheckOnClick = true,
             Checked = _settings.ReflowParagraphs,
             ToolTipText = "開啟:把視覺軟換行併成段落。預設關閉=忠實保留畫面行序。",
         };
-        reflowItem.CheckedChanged += (_, _) =>
+        _reflowItem.CheckedChanged += (_, _) =>
         {
-            _settings.ReflowParagraphs = reflowItem.Checked;
+            _settings.ReflowParagraphs = _reflowItem.Checked;
             _settings.Save();
         };
-        menu.Items.Add(reflowItem);
+        menu.Items.Add(_reflowItem);
 
-        menu.Items.Add(BuildLanguageMenu());
+        _languageRoot = BuildLanguageMenu();
+        menu.Items.Add(_languageRoot);
         menu.Items.Add(BuildAiMenu());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("關於 FlashGrab", null, (_, _) => ShowAbout());
@@ -117,7 +123,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             _settings.WelcomeShown = true;
             _settings.Save();
-            WelcomeForm.Show(_trayIcon.Icon, ShowSettingsMenu);
+            WelcomeForm.Show(_trayIcon.Icon, OpenSettings);
         }
     }
 
@@ -154,10 +160,29 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ToolTipIcon.Info);
     }
 
-    /// <summary>在游標處彈出托盤右鍵設定選單(供首次歡迎視窗的「開啟設定」用)。</summary>
-    private void ShowSettingsMenu()
+    /// <summary>開啟正規設定視窗(供首次歡迎視窗與托盤「設定…」共用)。</summary>
+    private void OpenSettings()
     {
-        _trayIcon.ContextMenuStrip?.Show(Cursor.Position);
+        SettingsForm.Show(_settings, WindowsMediaOcr.AvailableLanguages, _trayIcon.Icon, ApplySettingsChanges);
+    }
+
+    /// <summary>設定視窗儲存後:重建 OCR 引擎並同步托盤選單的勾選狀態。</summary>
+    private void ApplySettingsChanges()
+    {
+        _ocr = new WindowsMediaOcr(_settings.LanguageTag);
+        _reflowItem.Checked = _settings.ReflowParagraphs;
+
+        foreach (ToolStripItem item in _languageRoot.DropDownItems)
+        {
+            if (item is ToolStripMenuItem mi)
+            {
+                mi.Checked = (mi.Tag as string) == _settings.LanguageTag
+                    || (mi.Tag is null && _settings.LanguageTag is null);
+            }
+        }
+
+        _aiEnableItem.Checked = _settings.Tier2Enabled && _settings.IsTier2Configured;
+        UpdateAiStatus();
     }
 
     private ToolStripMenuItem BuildLanguageMenu()
@@ -334,7 +359,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     /// <summary>查詢本地 Ollama 已安裝模型;服務不可達回 null。</summary>
-    private static async Task<List<string>?> ProbeOllamaModelsAsync()
+    internal static async Task<List<string>?> ProbeOllamaModelsAsync()
     {
         try
         {
@@ -377,7 +402,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void EditModel()
     {
         string? model = TextInputDialog.Show("設定模型",
-            "模型名稱(如 gemini-2.5-flash、qwen2.5vl)。", _settings.Tier2Model);
+            "模型名稱(如 gemini-3.1-flash-lite、qwen2.5vl)。", _settings.Tier2Model);
         if (model is null || string.IsNullOrWhiteSpace(model))
         {
             return;

@@ -56,9 +56,9 @@ internal static class WelcomeForm
 
         var settingsBtn = new Button
         {
-            Text = "開啟設定選單…",
+            Text = "開啟設定…",
             Left = 24,
-            Width = 150,
+            Width = 130,
             Top = 220,
             Height = 32,
         };
