@@ -127,6 +127,9 @@ Two editions are available under the Releases page:
 * Self-contained (No runtime required)
 * Portable and USB-friendly
 
+> **No installer needed — just double-click the `.exe`.**
+> FlashGrab starts **directly in the background** (system tray, bottom-right). A toast confirms *"Running in the background — press Win + Shift + C"*, and a one-time welcome window appears on first launch. There is **no main window**; right-click the tray icon for settings. Running it again while it's already open just shows a reminder instead of opening a second copy.
+
 ---
 
 ## ⚙️ Configuration
