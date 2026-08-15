@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Produces the FlashGrab release artifact in publish\dist\.
 
