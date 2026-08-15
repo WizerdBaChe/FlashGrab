@@ -16,4 +16,9 @@
 	<ApplicationIcon>FlashGrab.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Tier 2 API 金鑰以 DPAPI(CurrentUser)加密後才落地 -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
 </Project>

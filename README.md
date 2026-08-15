@@ -138,6 +138,29 @@ Configuration file is automatically created at:
 ```
 %AppData%\FlashGrab\settings.json
 ```
+
+### API key storage
+
+If you configure a cloud AI provider, its API key is encrypted with **Windows DPAPI
+(`CurrentUser` scope)** before it is written to disk. `settings.json` contains only the
+ciphertext, in the `Tier2ApiKeyProtected` field.
+
+Be clear about what that does and does not buy you:
+
+* ✅ Copying `settings.json` to another machine, another Windows account, a backup, or a
+  cloud-sync folder yields an unusable blob — decryption fails and FlashGrab treats the
+  key as unset.
+* ✅ Another local account on this PC cannot read the key out of the file.
+* ❌ It does **not** protect against code running as *your own* Windows user. Anything
+  running under your account can call the same decryption API you can. DPAPI is
+  at-rest protection for the file, not a defence against local malware.
+
+Settings files written by v0.4.1 and earlier stored the key in clear text. They are
+migrated automatically on first launch — the key is re-encrypted in place and the
+plaintext field is removed, so you do not need to re-enter it. Because the key did sit on
+disk in clear text, the migration is recorded in `%AppData%\FlashGrab\security.log` and
+**rotating that key at your provider is recommended**.
+
 For local Ollama setup, ensure your model is running before executing the AI grab:
 ```bash
 ollama run maternion/LightOnOCR-2
