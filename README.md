@@ -115,17 +115,30 @@ Need even better recognition for low-contrast text or complex watermarks? Simply
 
 ## 📦 Releases
 
-Two editions are available under the Releases page:
-
-### FlashGrab.exe (Recommended)
-* ~24 MB
-* Requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
-* Lowest memory usage & fastest startup
+One download, deliberately — there is no second, smaller build to pick by mistake.
 
 ### FlashGrab-Portable.exe
-* ~74 MB
-* Self-contained (No runtime required)
+* ~75 MB
+* Self-contained — **no .NET runtime, no prerequisites**
 * Portable and USB-friendly
+
+### Verifying your download
+
+The release ships a `SHA256SUMS.txt` alongside the `.exe`. The executable is not
+Authenticode-signed, so the hash is what tells you the file is the one that was built:
+
+```powershell
+Get-FileHash .\FlashGrab-Portable.exe -Algorithm SHA256
+```
+
+Compare the result with the line in `SHA256SUMS.txt` (that file records the hash in
+lower case; `Get-FileHash` prints upper case — the comparison is case-insensitive).
+
+> **Building from source?** `.\publish.ps1 -FrameworkDependent` additionally produces the
+> ~25 MB framework-dependent `FlashGrab.exe` in `publish\_fd\`. It is for local testing
+> only: it requires the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+> and is deliberately kept out of `publish\dist\` and out of `SHA256SUMS.txt`, so it can
+> never be handed to someone by accident.
 
 > **No installer needed — just double-click the `.exe`.**
 > FlashGrab starts **directly in the background** (system tray, bottom-right). A toast confirms *"Running in the background — press Win + Shift + C"*, and a one-time welcome window appears on first launch. There is **no main window**; right-click the tray icon for settings. Running it again while it's already open just shows a reminder instead of opening a second copy.

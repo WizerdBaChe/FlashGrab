@@ -47,17 +47,25 @@ FlashGrab 是一款專注於速度、準確度與隱私的 Windows 螢幕取字�
 
 ## 📦 發行版本
 
-### FlashGrab.exe（推薦）
-
-* 約 24 MB
-* 需安裝 .NET 8 Desktop Runtime
-* 記憶體占用最低
+刻意只提供一個下載檔,不會有第二個比較小的版本讓人選錯。
 
 ### FlashGrab-Portable.exe
 
-* 約 74 MB
-* Self-contained
-* 解壓即用
+* 約 75 MB
+* 自含 (self-contained) —— **不需要 .NET Runtime,無任何前置需求**
+* 可放隨身碟,解壓即用
+
+### 驗證下載的檔案
+
+發行檔會附一份 `SHA256SUMS.txt`。這個 exe 沒有數位簽章 (Authenticode),雜湊值就是你確認「拿到的檔案就是當初建置出來那一個」的依據:
+
+```powershell
+Get-FileHash .\FlashGrab-Portable.exe -Algorithm SHA256
+```
+
+把結果跟 `SHA256SUMS.txt` 裡那一行對照即可 (檔案裡記的是小寫,`Get-FileHash` 印出來是大寫,比對時不分大小寫)。
+
+> **自行建置的話:** 加上 `.\publish.ps1 -FrameworkDependent` 會另外產出約 25 MB 的 framework-dependent `FlashGrab.exe`,放在 `publish\_fd\`。那個版本只供本機測試:它需要安裝 .NET 8 Desktop Runtime,而且刻意不放進 `publish\dist\`、也不列入 `SHA256SUMS.txt`,以免被順手轉發給別人。
 
 > **免安裝 —— 雙擊 `.exe` 即可。**
 > FlashGrab 會**直接進入背景執行**(常駐系統匣，右下角)。啟動時右下角會跳一則 toast 通知「已在背景執行 · 按 Win + Shift + C」，首次執行還會出現一次性的歡迎視窗。本程式**沒有主視窗**，所有設定都在「右鍵托盤圖示」選單裡。若已在執行中又再次雙擊，只會跳出提示而不會開出第二個程式。
