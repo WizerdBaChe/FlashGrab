@@ -51,18 +51,41 @@ if ($FrameworkDependent) {
 }
 
 Write-Host "`n== 發行成品(publish\dist) ==" -ForegroundColor Green
-Get-ChildItem $dist -Filter *.exe | Select-Object Name,
-    @{N='MB';E={ [math]::Round($_.Length / 1MB, 1) }} | Format-Table -AutoSize
+# Write-Host, not Format-Table: Format-Table emits format-descriptor objects
+# into the success stream, and only an interactive host's default formatter
+# turns those into the "Name / MB" table a person sees. Any non-interactive
+# invocation - captured/redirected stdout, CI, a wrapper script - never reaches
+# that formatter, so the objects fall back to ToString() and the operator gets
+# bare type names (Microsoft.PowerShell.Commands.Internal.Format.FormatStartData
+# and friends) instead of a filename and a size - at exactly the point where
+# they would check what is about to be handed to someone else. Every other
+# operator-facing line in this script already goes through Write-Host; this one
+# has to as well, built as plain text ourselves.
+Get-ChildItem $dist -Filter *.exe | ForEach-Object {
+    Write-Host ("  {0}  ({1} MB)" -f $_.Name, [math]::Round($_.Length / 1MB, 1))
+}
 
 # The artifact is not Authenticode-signed and cannot cheaply be: a traditional
 # OV/EV certificate costs more per year than this tool is worth. Publishing the
 # hash is the substitute — send this file by a channel where YOU are
 # authenticated, so the recipient is trusting you and not the file.
 $hashFile = Join-Path $dist "SHA256SUMS.txt"
-Get-ChildItem $dist -Filter *.exe | ForEach-Object {
+$hashLines = Get-ChildItem $dist -Filter *.exe | ForEach-Object {
     $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
     "$h  $($_.Name)"
-} | Set-Content -Path $hashFile -Encoding utf8
+}
+# UTF-8 WITHOUT a BOM, LF line endings only. This file exists to be verified by
+# the RECIPIENT, quite possibly with `sha256sum -c` under Git Bash/WSL/Linux/
+# macOS rather than Get-FileHash on Windows. `Set-Content -Encoding utf8` on
+# Windows PowerShell 5.1 writes a BOM, and Set-Content's default line ending on
+# Windows is CRLF; GNU coreutils sha256sum treats the BOM as part of the first
+# hash and rejects the trailing CR on every line, so a BOM+CRLF file fails to
+# verify with "no properly formatted SHA256 checksum lines found" - the exact
+# cross-checking this file is here to enable. Building the text ourselves and
+# writing it with an explicit no-BOM UTF8Encoding sidesteps both, identically on
+# Windows PowerShell 5.1 and PowerShell 7.
+$hashText = ($hashLines -join "`n") + "`n"
+[System.IO.File]::WriteAllText($hashFile, $hashText, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host "== SHA-256 (publish\dist\SHA256SUMS.txt) ==" -ForegroundColor Green
 Get-Content $hashFile
