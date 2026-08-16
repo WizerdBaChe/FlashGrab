@@ -141,17 +141,46 @@ internal sealed class Settings
             + "該金鑰曾以明文寫在 settings.json,建議到 AI 供應商後台重新產生一組。");
     }
 
+    /// <summary>
+    /// 先寫到同目錄的 .tmp 再改名蓋回去。改名在 NTFS 上是原子操作,所以任何時刻的
+    /// 讀者看到的要嘛是完整的舊檔、要嘛是完整的新檔,不會是寫到一半的殘檔。
+    ///
+    /// 直接 File.WriteAllText(path, ...) 不行:它在寫入第一個位元組之前就把原檔截斷,
+    /// 程序若在中途死掉(當機、強制斷電、防毒/EDR 中斷),磁碟上就留下一個解析不了的
+    /// settings.json,Load() 只會靜默回退預設值——連剛加密好的 Tier2ApiKeyProtected
+    /// 一起丟掉,使用者得重新輸入金鑰。MigrateLegacyApiKey() 會在啟動時自動呼叫本方法,
+    /// 這條寫入路徑沒有人在旁邊看著,所以它必須自己是安全的。
+    /// </summary>
     public void Save()
     {
+        string path = FilePath;
+        string temp = path + ".tmp";
         try
         {
-            string path = FilePath;
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(this, JsonOptions));
+            // 不指定 encoding:與改動前同樣寫出不含 BOM 的 UTF-8(縮排換行由
+            // JsonOptions 決定,在 Windows 上是 CRLF),避免順手改掉檔案格式。
+            File.WriteAllText(temp, JsonSerializer.Serialize(this, JsonOptions));
+            File.Move(temp, path, overwrite: true);
         }
         catch
         {
-            // 寫入失敗不致命(例如唯讀目錄),靜默忽略
+            // 寫入失敗不致命(例如唯讀目錄),靜默忽略。原檔完好——改名是唯一會碰到
+            // 真正路徑的步驟,沒走到就等於什麼都沒發生;剩下的暫存檔順手清掉。
+            TryDelete(temp);
+        }
+    }
+
+    /// <summary>清掉半途而廢的暫存檔;連這步都失敗也不該把原本的錯誤蓋掉。</summary>
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch
+        {
+            // 檔案被鎖住或權限不足。留一個 .tmp 在旁邊不影響任何功能,下次存檔會覆蓋它。
         }
     }
 
