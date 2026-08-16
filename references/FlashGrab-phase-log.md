@@ -202,3 +202,41 @@
 - 本地模型自動列舉:已用 /api/tags 防呆;未來可做下拉自動選單。
 - bbox 變體:若要 AI 路徑也吃幾何(縮排還原)可換 LightOnOCR bbox 版。
 - 沿用既有 TODO:跨螢幕/混合 DPI 驗證、exe 簽章、模型「非內建資源」方案。
+
+---
+
+# Phase Checkpoint
+- Project: FlashGrab
+- Phase: Phase 5 – Release-artifact hardening (publish.ps1 operator output + checksum encoding)
+- Status: completed
+- Date: 2026-08-16
+- Transcript: 105b1852-9fe6-470c-b6e6-c651c1ee4b39.jsonl — archived: yes (daily mirror `ClaudeSessionTranscriptMirror-Daily` → `D:\AIWork\_session-archive\`, last run OK 2026-08-16 13:00; this session's tail lands on the next run)
+- Language note: this section is English per the current record contract; Phase 0–4 above are Traditional Chinese, written before that contract.
+
+## Log gap — read before assuming continuity
+- Phase 4 ends 2026-06-29; five changes landed before this section with NO checkpoint, so their rationale lives only in their PRs: `31c6b70` (#1 launch feedback + settings rework, v0.4.1), `c3c9979` (#2 DPAPI for the Tier 2 API key), `91479e3` (#3 single dist artifact + SHA256SUMS.txt), `a07f4e6` (v0.4.2), `446a839` (#4 atomic settings.json write).
+
+## Goals
+- Fix two defects in `publish.ps1` found while extracting this script's pattern into AssetVault as the `single-file-publish` asset; both survived #3 because that ticket's acceptance checked the filesystem, not the console output or the file's bytes.
+
+## Decisions
+- **Operator output goes through Write-Host, never Format-Table.** Format-Table emits format-descriptor objects into the success stream and only a formatter renders them; rejected `| Out-String` as the fix because it masks the problem at one call site instead of removing it, and every other operator-facing line already uses Write-Host.
+- **SHA256SUMS.txt is written with an explicit no-BOM `UTF8Encoding` and LF-only endings** via `[System.IO.File]::WriteAllText` — `Set-Content -Encoding utf8` means UTF-8 WITH BOM on Windows PowerShell 5.1 and defaults to CRLF, and this file exists to be verified by a RECIPIENT, plausibly under Git Bash/WSL/Linux/macOS.
+- **The reported repro harness does not discriminate — measured, not assumed.** `*>&1 | Out-String` renders the descriptors correctly and so passes on the BROKEN code too; measured over old vs new listing code, `*>&1 | Out-String`, child `powershell -File | Out-String` and child `powershell -File > file` all leak 0 on both, while capture-then-interpolate, `| %{ $_.ToString() }` and `| Set-Content` leak 5 on old and 0 on new (5 = the exact five type-name lines reported). Acceptance was re-run under the discriminating harnesses.
+- Deliberately did NOT port AssetVault's `$LASTEXITCODE` guards after each `dotnet publish` — out of scope; the script still fails under `$ErrorActionPreference = "Stop"` (Copy-Item on a missing exe), just with a worse message.
+- Left `Get-Content $hashFile` as the one non-Write-Host operator line: it emits strings, which stringify correctly under every harness, and reading the file back is stronger evidence than echoing the in-memory lines.
+
+## Changes
+- `publish.ps1`: artifact listing rebuilt as `Write-Host ("  {0}  ({1} MB)" -f ...)`; checksum file written via `WriteAllText` with `New-Object System.Text.UTF8Encoding($false)` and `-join "\`n"`. Both carry comments naming the failure mode so the next reader cannot "simplify" them back.
+- Git: branch `claude/happy-poincare-d632d8` → PR #5, squash-merged as `aadb9ba`; remote branch deleted; local `main` synced.
+
+## Verification
+- Pre-fix control on the shipped artifact: `publish\dist\SHA256SUMS.txt` began `EF BB BF`, ended `0D 0A`, and GNU `sha256sum -c` rejected the WHOLE file ("no properly formatted SHA256 checksum lines found") — worse than the reported "corrupts the first entry".
+- Post-fix, rebuilt after #4 merged: listing prints `FlashGrab-Portable.exe  (74.5 MB)`; zero `Microsoft.PowerShell.Commands.Internal.Format` under the discriminating harnesses; SHA256SUMS.txt starts `36 39 30` with CR count 0; `Get-FileHash` matches the recorded line; `sha256sum -c` OK under Git Bash coreutils AND WSL; `dist\` holds exactly two files; `-FrameworkDependent` still lands the 24.6 MB exe in `publish\_fd\`, outside dist and out of the checksum file.
+- Shipped build hash: `6900fbfcf4b2674c0139babbe43d7170d4e873f311bc2420cbe893aad61873f5`.
+- NOT verified: `WriteAllText` under PowerShell 7 — no `pwsh` on this machine; it is a BCL call expected to behave identically, but it was not measured.
+
+## Open Questions / TODO
+- **The single-file build is not reproducible across build directories** — the same commit built in the worktree and in the main repo gave different exe hashes (`547d5450…` vs `6900fbfc…`), so the exe and its SHA256SUMS.txt must always come from the SAME build; cause not investigated (bundle ID or embedded paths are the suspects).
+- AssetVault's `single-file-publish/verify.ps1` carries the same one-sided guard (L90 captures via `*>&1 | Out-String`); its run still fails on broken code, but only via the adjacent `\(\d+…MB\)` assertion — i.e. defended by the output format having parentheses, not by the check labelled REGRESSION GUARD. Being handled in the AssetVault session.
+- Carried forward unchanged: exe unsigned → SmartScreen on first run; cross-screen / mixed-DPI verification; model "non-bundled resource" scheme.
