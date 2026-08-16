@@ -88,9 +88,9 @@ internal sealed class Settings
 
     public static Settings Load()
     {
+        string path = FilePath;
         try
         {
-            string path = FilePath;
             if (File.Exists(path))
             {
                 string json = File.ReadAllText(path);
@@ -100,11 +100,21 @@ internal sealed class Settings
                     loaded.MigrateLegacyApiKey();
                     return loaded;
                 }
+
+                // 檔案在、內容卻反序列化成 null(整個檔是 "null" 或空白)。
+                SecurityLog.Write(
+                    "settings.json 存在但沒有可用內容,本次啟動改用預設值;"
+                    + "若原本設過 Tier 2 金鑰,需要重新輸入。");
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 設定毀損/無法讀取時回退預設值,不影響啟動
+            // 「檔案不存在」是首次執行的正常狀態,上面的 File.Exists 已經把它擋在外面;
+            // 走到這裡代表檔案在、卻讀不動或解析不了,等於使用者的設定(含加密後的
+            // API 金鑰)當場歸零。這種事不留痕跡就會變成無聲的資料遺失,所以記一行。
+            SecurityLog.Write(
+                $"settings.json 讀取或解析失敗({ex.GetType().Name}),本次啟動改用預設值;"
+                + "若原本設過 Tier 2 金鑰,需要重新輸入。");
         }
 
         return new Settings();
