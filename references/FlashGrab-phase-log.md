@@ -240,3 +240,48 @@
 - **The single-file build is not reproducible across build directories** — the same commit built in the worktree and in the main repo gave different exe hashes (`547d5450…` vs `6900fbfc…`), so the exe and its SHA256SUMS.txt must always come from the SAME build; cause not investigated (bundle ID or embedded paths are the suspects).
 - AssetVault's `single-file-publish/verify.ps1` carries the same one-sided guard (L90 captures via `*>&1 | Out-String`); its run still fails on broken code, but only via the adjacent `\(\d+…MB\)` assertion — i.e. defended by the output format having parentheses, not by the check labelled REGRESSION GUARD. Being handled in the AssetVault session.
 - Carried forward unchanged: exe unsigned → SmartScreen on first run; cross-screen / mixed-DPI verification; model "non-bundled resource" scheme.
+
+---
+
+# Phase Checkpoint
+- Project: FlashGrab
+- Phase: Phase 6 – OCR row reconstruction fix (v0.4.3) + publish.ps1 lock detection
+- Status: completed (code + release done; real-capture acceptance OUTSTANDING)
+- Date: 2026-08-18
+- Transcript: 60bded1b-b539-4c35-99bc-60bd58496422.jsonl — archived: yes (daily mirror `ClaudeSessionTranscriptMirror-Daily` → `D:\AIWork\_session-archive\`, last run OK 2026-08-18 14:29:38 robocopy exit=3; this session's tail lands on the next run)
+- Language note: English, per the record contract adopted at Phase 5.
+
+## Goals
+- Fix a user-reported defect: in normal (Tier 0 / offline) mode, one visual row of text pastes as a staircase of fake nesting.
+- Ship it as v0.4.3 by the established release convention (bump → tag → `publish.ps1` → GitHub release).
+- Remove the `publish.ps1` silent-skip that this release surfaced.
+
+## Decisions
+- **Root cause is line segmentation, not indentation.** `Windows.Media.Ocr` groups words by proximity, so a wide horizontal gap ENDS the `OcrLine` — a UI chip row / toolbar / table row comes back as several lines. `LineReconstructor` rendered each `OcrLine` as its own output line and converted its bbox X into leading spaces, so same-row fragments cascaded right. The fix therefore belongs UPSTREAM of the indent logic: group lines into visual rows first, then indent per row.
+- **Row grouping by vertical overlap ≥ 50% of the SHORTER fragment's height** — not baseline equality, not a fixed pixel tolerance. Overlap is measured against the row's running span with the shorter height as denominator, so a tall fragment cannot swallow the row, and uneven glyph heights on one baseline still merge.
+- **Intra-row separator = one space (user ruling).** Chosen over gap-proportional padding and over tabs. Column alignment for table captures is deliberately NOT preserved; gap-proportional was rejected because the reported case (UI chip rows) would keep large whitespace runs. Reversal point is a single line in `JoinRow`.
+- **`MaxIndentSpaces` 60 → 16 (user ruling).** Keeps the Phase 2 user-accepted code-indent restoration while capping the cross-region capture case (a selection spanning two side-by-side panels used to push the right block out of readable range). Rejected disabling indent entirely — that would regress an accepted behaviour.
+- **`publish.ps1`: name the blocking process BEFORE deleting**, rather than merely making `Remove-Item` fatal. A fatal `Remove-Item` still only says "used by another process" — not WHICH process, and not what to do about it.
+- **Reported via `Write-Host` + `exit 1`, not `throw`** — same reasoning as Phase 5's Write-Host ruling: a PowerShell error record buries the one useful sentence under a stack trace and then repeats the whole message as `FullyQualifiedErrorId`.
+- **No release for the `publish.ps1` change** — build tooling only, shipped binary unchanged, so v0.4.3 stands.
+
+## Changes
+- `Pipeline/LineReconstructor.cs`: added `GroupRows` / `SameRow` / `JoinRow` + `Left`/`Top`/`Bottom`/`VerticalCenter` helpers; indent now computed per visual row; `MaxIndentSpaces` 60 → 16. PR #6 squash-merged as `2a5056b`.
+- `FlashGrab.csproj`: Version 0.4.2 → 0.4.3 (`e9bda31`, tag `v0.4.3` points here).
+- `publish.ps1`: `Get-ProcessRunningUnder` / `Stop-WithReason` / `Remove-BuildOutput` replace the blanket `Remove-Item -ErrorAction SilentlyContinue`; non-existent folders still skipped silently via `Test-Path`. PR #7 squash-merged as `1fb3c39`.
+- Release `v0.4.3` published with `FlashGrab-Portable.exe` + `SHA256SUMS.txt`; hash `258dbcc5c1cb0a89e331b8b1e3187b7ea6fd483099e1feb5e4a709b6f6357b7d`.
+- Both remote branches deleted; `main` synced at `1fb3c39`; no open PRs; working tree clean.
+
+## Verification
+- **The repo has no test project.** Behaviour was measured with a throwaway harness in the session scratchpad that compiles `Pipeline/` + `Ocr/OcrModels.cs` and feeds synthetic `OcrDocument` geometry. NOT committed — if this area is touched again, either rebuild it or promote it to a real test project.
+- **Positive control run FIRST, against pre-fix code**: it reproduced the reported staircase verbatim (`Local\n           FlashGrab\n … main … worktree`), 5 of 8 cases failing. Post-fix: 8/8 pass.
+- The three Phase 2 user-accepted behaviours — code-indent restoration, paragraph reflow, CJK no-space — pass BOTH before and after, so the harness is not one-sided and no accepted behaviour regressed. Tier 2 `PreformattedText` bypass also unchanged.
+- `publish.ps1` both paths measured end to end: LOCKED (v0.4.3 running from `dist\`) → exit 1, aborts BEFORE `dotnet publish`, existing artifact `LastWriteTime` unchanged; UNLOCKED → exit 0, and `publish\_fd\` being absent was skipped without error, exercising the first-run branch the original `SilentlyContinue` existed for. `PSParser::Tokenize` 0 errors.
+- Two builds of the same commit in the SAME directory hashed identically (`258dbcc5…`), so the local `dist\` and the released asset are byte-identical. Consistent with — not a refutation of — Phase 5's cross-DIRECTORY non-reproducibility finding.
+- **NOT verified: anything a human looks at.** No real screen capture was performed this phase; all OCR evidence is synthetic geometry.
+
+## Open Questions / TODO
+- **User acceptance of the OCR fix is OUTSTANDING and is the first thing to close.** Capture a real chip row (window title bar) and confirm it pastes as one line, `Local FlashGrab main worktree`. Full manual checklist (6 items, incl. code block / CJK paragraph / cross-panel / table / reflow) is in PR #6.
+- Table captures now lose column alignment by design. If that turns out to matter more than clean chip rows, `JoinRow` is the single reversal point.
+- Row-merge heuristic is untested against multi-COLUMN documents (two text columns side by side at the same Y) — those will now merge into one line per row, which may or may not be wanted. No evidence either way yet.
+- Carried forward unchanged: exe unsigned → SmartScreen on first run; cross-screen / mixed-DPI verification; model "non-bundled resource" scheme; single-file build not reproducible across build directories (Phase 5); AssetVault `single-file-publish/verify.ps1` one-sided guard (handled in the AssetVault session).
