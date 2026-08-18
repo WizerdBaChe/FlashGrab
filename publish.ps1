@@ -33,8 +33,80 @@ $dist = Join-Path $root "publish\dist"
 $fdOut = Join-Path $root "publish\_fd"
 $scOut = Join-Path $root "publish\_sc"
 
+# The cleanup below used to be one Remove-Item with -ErrorAction SilentlyContinue
+# across all three folders, which conflated the one benign failure - the folder
+# does not exist yet, on a first run - with the common real one: dist\FlashGrab-
+# Portable.exe is locked because the previously published build is still running.
+# The lock error was swallowed here, so the script went on to spend a minute in
+# dotnet publish and only then failed, at Copy-Item, with a bare IOException
+# naming a path. That message points at the copy rather than at the stale output
+# that was never cleaned, and it never states the thing the operator has to do.
+# So: name the blocking process before deleting anything, and make every other
+# delete failure fatal on the spot instead of one step downstream.
+function Get-ProcessRunningUnder {
+    param([string]$Path)
+
+    $full = [System.IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
+    Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
+        $proc = $_
+        # .Path throws on processes this session cannot open (system/elevated).
+        # Those are never our own build output, so drop them without noise.
+        $exe = $null
+        try { $exe = $proc.Path } catch { }
+        if ($exe -and $exe.StartsWith($full, [StringComparison]::OrdinalIgnoreCase)) {
+            $proc
+        }
+    }
+}
+
+# Failures here are reported as plain coloured lines and exit 1, not as a thrown
+# exception: what the operator needs is the one sentence telling them to close
+# the app, and a PowerShell error record buries that under a stack trace and then
+# repeats the whole message again as the FullyQualifiedErrorId. Same reasoning as
+# the Write-Host artifact listing further down - this script talks to a person.
+function Stop-WithReason {
+    param([string[]]$Line)
+
+    Write-Host ""
+    foreach ($text in $Line) {
+        Write-Host $text -ForegroundColor Red
+    }
+    exit 1
+}
+
+function Remove-BuildOutput {
+    param([string[]]$Path)
+
+    foreach ($target in $Path) {
+        if (-not (Test-Path $target)) {
+            continue
+        }
+
+        $blockers = @(Get-ProcessRunningUnder $target)
+        if ($blockers.Count -gt 0) {
+            $lines = @("清不掉舊輸出 $target", "有執行檔正在從這個資料夾執行,檔案被鎖住:")
+            $lines += $blockers | ForEach-Object {
+                "    {0} (PID {1})  {2}" -f $_.ProcessName, $_.Id, $_.Path
+            }
+            $lines += "請先結束它(托盤圖示 -> 結束),再重跑 .\publish.ps1。"
+            Stop-WithReason -Line $lines
+        }
+
+        try {
+            Remove-Item $target -Recurse -Force -ErrorAction Stop
+        }
+        catch {
+            Stop-WithReason -Line @(
+                "清不掉舊輸出 $target",
+                "底層錯誤:$($_.Exception.Message)",
+                "常見原因:檔案總管開著這個資料夾、防毒正在掃描,或有其他程序持有檔案控制代碼。"
+            )
+        }
+    }
+}
+
 Write-Host "== 清理舊輸出 ==" -ForegroundColor Cyan
-Remove-Item $dist, $fdOut, $scOut -Recurse -Force -ErrorAction SilentlyContinue
+Remove-BuildOutput -Path $dist, $fdOut, $scOut
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
 Write-Host "== 建置自含壓縮單檔 ==" -ForegroundColor Cyan
