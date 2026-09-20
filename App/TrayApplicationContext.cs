@@ -711,10 +711,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    /// <summary>取自組件版本(來源是 csproj 的 Version),不在程式碼裡手寫,避免發版後過期。</summary>
+    private static string AppVersion =>
+        typeof(TrayApplicationContext).Assembly.GetName().Version is { } v
+            ? $"{v.Major}.{v.Minor}.{v.Build}"
+            : "?";
+
     private void ShowAbout()
     {
         MessageBox.Show(
-            "FlashGrab v0.4.1(Phase 4 選配 AI 增強)\n\n" +
+            $"FlashGrab v{AppVersion}\n\n" +
             "一鍵喚醒 Windows 原生 OCR,將螢幕上的文字與程式碼\n化為剪貼簿裡乾淨的結構化資料。\n\n" +
             $"快捷鍵:{(_activeHotkey is { } hk ? hk.ToDisplay() : "未啟用(請到設定更改)")}\n" +
             "AI 增強(選配):框選時按住 Shift,改用視覺模型\n(本地 Ollama 離線,或免費/付費雲端)。",
