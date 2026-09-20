@@ -1,5 +1,6 @@
 using System.Drawing;
 using FlashGrab.Ocr;
+using FlashGrab.Trigger;
 using Windows.Globalization;
 
 namespace FlashGrab.App;
@@ -27,7 +28,12 @@ internal static class SettingsForm
         public override string ToString() => Display;
     }
 
-    public static void Show(Settings settings, IReadOnlyList<Language> languages, Icon? icon, Action onApplied)
+    /// <param name="tryRebindHotkey">
+    /// 儲存時實際註冊新快捷鍵;成功回 null,失敗回原因(此時不儲存,讓使用者當場改)。
+    /// </param>
+    public static void Show(
+        Settings settings, IReadOnlyList<Language> languages, Icon? icon, Action onApplied,
+        Func<HotkeySpec, string?> tryRebindHotkey)
     {
         using var form = new Form
         {
@@ -119,6 +125,48 @@ internal static class SettingsForm
             }
         }
         AddRow("辨識語言", langCombo);
+
+        // 快捷鍵:修飾鍵勾選 + 主鍵下拉。不做「按下去錄製」——Win 組合鍵常被系統或佔用它的
+        // 程式先吃掉,錄不到;勾選/下拉在任何情況都可靠。
+        var current = HotkeySpec.FromSettingOrDefault(settings.Hotkey);
+        var modBoxes = new (CheckBox Box, ModifierKeys Mod)[]
+        {
+            (new CheckBox { Text = "Ctrl" }, ModifierKeys.Control),
+            (new CheckBox { Text = "Alt" }, ModifierKeys.Alt),
+            (new CheckBox { Text = "Shift" }, ModifierKeys.Shift),
+            (new CheckBox { Text = "Win" }, ModifierKeys.Win),
+        };
+        var hotkeyPanel = new FlowLayoutPanel { AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.LeftToRight };
+        foreach (var (box, mod) in modBoxes)
+        {
+            box.AutoSize = true;
+            box.Margin = new Padding(0, 4, 10, 0);
+            box.Checked = current.Modifiers.HasFlag(mod);
+            hotkeyPanel.Controls.Add(box);
+        }
+
+        var keyCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 64, FormattingEnabled = true };
+        foreach (var k in HotkeySpec.SelectableKeys())
+        {
+            keyCombo.Items.Add(k);
+        }
+        keyCombo.Format += (_, e) =>
+        {
+            if (e.ListItem is Keys k)
+            {
+                e.Value = HotkeySpec.KeyLabel(k);
+            }
+        };
+        keyCombo.SelectedItem = current.Key;
+        hotkeyPanel.Controls.Add(keyCombo);
+        AddRow("取字快捷鍵", hotkeyPanel);
+        AddFull(new Label
+        {
+            Text = "被其他程式佔用時,啟動會自動改用備用鍵;按儲存時會先確認新組合能不能註冊。",
+            AutoSize = true,
+            MaximumSize = new Size(480, 0),
+            ForeColor = HintColor,
+        }, new Padding(0, 0, 0, 4));
 
         AddFull(Line(), new Padding(0, 0, 0, 0));
 
@@ -278,6 +326,25 @@ internal static class SettingsForm
                     "AI 設定未完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+
+            var newHotkey = new HotkeySpec(
+                modBoxes.Where(m => m.Box.Checked).Aggregate(ModifierKeys.None, (acc, m) => acc | m.Mod),
+                (Keys)keyCombo.SelectedItem!);
+            if (!newHotkey.IsValid)
+            {
+                MessageBox.Show(form,
+                    "快捷鍵至少要勾一個修飾鍵(Ctrl / Alt / Shift / Win),否則會吃掉一般打字。",
+                    "快捷鍵設定不完整", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (tryRebindHotkey(newHotkey) is { } hotkeyError)
+            {
+                MessageBox.Show(form, hotkeyError, "快捷鍵無法使用", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            settings.Hotkey = newHotkey == HotkeySpec.Default ? null : newHotkey.ToString();
 
             if (!string.Equals(newUrl, settings.Tier2BaseUrl, StringComparison.OrdinalIgnoreCase))
             {

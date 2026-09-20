@@ -33,20 +33,30 @@ internal sealed class GlobalHotkey : IDisposable
         _window.HotkeyMessage += () => HotkeyPressed?.Invoke(this, EventArgs.Empty);
     }
 
-    public bool Register(ModifierKeys modifiers, Keys key)
+    /// <summary>最近一次 <see cref="Register"/> 失敗的 Win32 錯誤碼(1409 = 已被其他程式註冊)。</summary>
+    public int LastError { get; private set; }
+
+    /// <summary>註冊快捷鍵;已註冊過則先解除再換新的。失敗時舊的不保留(呼叫端負責回復)。</summary>
+    public bool Register(HotkeySpec spec)
     {
-        _registered = RegisterHotKey(_window.Handle, HotkeyId, (uint)modifiers | MOD_NOREPEAT, (uint)key);
+        Unregister();
+        _registered = RegisterHotKey(_window.Handle, HotkeyId, (uint)spec.Modifiers | MOD_NOREPEAT, (uint)spec.Key);
+        LastError = _registered ? 0 : Marshal.GetLastWin32Error();
         return _registered;
     }
 
-    public void Dispose()
+    public void Unregister()
     {
         if (_registered)
         {
             UnregisterHotKey(_window.Handle, HotkeyId);
             _registered = false;
         }
+    }
 
+    public void Dispose()
+    {
+        Unregister();
         _window.DestroyHandle();
     }
 

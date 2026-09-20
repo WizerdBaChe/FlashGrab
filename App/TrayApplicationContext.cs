@@ -24,7 +24,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private IOcrEngine _ocr;
     private bool _capturing;
-    private bool _hotkeyOk;
+    // 快捷鍵狀態:_activeHotkey 為 null 代表目前沒有任何快捷鍵可用(要讓使用者看得見)。
+    private HotkeySpec? _activeHotkey;
+    private HotkeySpec _wantedHotkey;
+    private int _wantedHotkeyError;
+    private bool _hotkeyFellBack;
+    private ToolStripMenuItem _hotkeyWarnItem = null!;
 
     // 第二實例喚醒第一實例用的具名事件 + 用來把該通知 marshal 回 UI 執行緒的同步內容
     private readonly EventWaitHandle _showSignal;
@@ -49,6 +54,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         var menu = new ContextMenuStrip();
 
+        _hotkeyWarnItem = new ToolStripMenuItem { Visible = false, ForeColor = Color.Firebrick };
+        _hotkeyWarnItem.Click += (_, _) => OpenSettings();
+        menu.Items.Add(_hotkeyWarnItem);
         menu.Items.Add("設定…", null, (_, _) => OpenSettings());
         menu.Items.Add(new ToolStripSeparator());
 
@@ -78,14 +86,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Icon = (Environment.ProcessPath != null) 
                 ? Icon.ExtractAssociatedIcon(Environment.ProcessPath) 
                 : SystemIcons.Application,
-            Text = "FlashGrab — 螢幕智慧取字 (Win+Shift+C)",
+            Text = "FlashGrab — 螢幕智慧取字",
             Visible = true,
             ContextMenuStrip = menu,
         };
 
         _hotkey = new GlobalHotkey();
         _hotkey.HotkeyPressed += OnHotkeyPressed;
-        _hotkeyOk = _hotkey.Register(ModifierKeys.Win | ModifierKeys.Shift, Keys.C);
+        StartHotkey();
+        RefreshHotkeyUi();
 
         // 啟動反饋(toast / 首次歡迎)需在訊息迴圈就緒後才能可靠顯示並捕捉 UI 同步內容,
         // 故用一次性 Timer 延到迴圈啟動後執行(建構子此刻迴圈尚未開始)。
@@ -105,25 +114,41 @@ internal sealed class TrayApplicationContext : ApplicationContext
     /// <summary>訊息迴圈就緒後執行一次:啟動 toast + 首次歡迎視窗。</summary>
     private void OnStarted()
     {
-        if (!_hotkeyOk)
+        if (_activeHotkey is null)
         {
             _trayIcon.ShowBalloonTip(
                 4000, "FlashGrab",
-                "已在背景執行,但全域快捷鍵 Win+Shift+C 註冊失敗(可能被其他程式佔用)。",
+                $"已在背景執行,但快捷鍵 {_wantedHotkey.ToDisplay()} 無法使用,目前按鍵不會有反應。",
                 ToolTipIcon.Warning);
+            AnnounceHotkeyProblem(
+                $"FlashGrab 已在背景執行,但快捷鍵 {_wantedHotkey.ToDisplay()} 無法註冊" +
+                $"(Windows 錯誤碼 {_wantedHotkeyError}),備用組合也都被佔用,所以現在按鍵盤不會有任何反應。\n\n" +
+                (_wantedHotkeyError == 1409 ? "錯誤碼 1409 代表這組按鍵已被別的程式註冊走了。\n\n" : string.Empty) +
+                "要現在開啟設定,改用其他快捷鍵嗎?");
+        }
+        else if (_hotkeyFellBack)
+        {
+            _trayIcon.ShowBalloonTip(
+                4000, "FlashGrab",
+                $"{_wantedHotkey.ToDisplay()} 被其他程式佔用,本次改用 {_activeHotkey.Value.ToDisplay()}。",
+                ToolTipIcon.Warning);
+            AnnounceHotkeyProblem(
+                $"快捷鍵 {_wantedHotkey.ToDisplay()} 已被其他程式佔用,FlashGrab 本次自動改用 {_activeHotkey.Value.ToDisplay()}。\n\n" +
+                "想固定使用別的組合,可到「設定 → 快捷鍵」更改(儲存時會先確認能不能註冊)。\n\n" +
+                "要現在開啟設定嗎?");
         }
         else
         {
             _trayIcon.ShowBalloonTip(
                 2500, "FlashGrab",
-                "已在背景執行 · 按 Win + Shift + C 開始取字", ToolTipIcon.Info);
+                $"已在背景執行 · 按 {_activeHotkey.Value.ToDisplay()} 開始取字", ToolTipIcon.Info);
         }
 
         if (!_settings.WelcomeShown)
         {
             _settings.WelcomeShown = true;
             _settings.Save();
-            WelcomeForm.Show(_trayIcon.Icon, OpenSettings);
+            WelcomeForm.Show(_trayIcon.Icon, _activeHotkey?.ToDisplay(), OpenSettings);
         }
     }
 
@@ -156,15 +181,127 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _trayIcon.ShowBalloonTip(
             2000, "FlashGrab",
-            "已在執行中 — 看右下角系統匣圖示,或直接按 Win + Shift + C。",
+            _activeHotkey is { } hk
+                ? $"已在執行中 — 看右下角系統匣圖示,或直接按 {hk.ToDisplay()}。"
+                : "已在執行中,但快捷鍵目前未啟用 — 右鍵系統匣圖示開啟設定。",
             ToolTipIcon.Info);
     }
 
     /// <summary>開啟正規設定視窗(供首次歡迎視窗與托盤「設定…」共用)。</summary>
     private void OpenSettings()
     {
-        SettingsForm.Show(_settings, WindowsMediaOcr.AvailableLanguages, _trayIcon.Icon, ApplySettingsChanges);
+        SettingsForm.Show(_settings, WindowsMediaOcr.AvailableLanguages, _trayIcon.Icon,
+            ApplySettingsChanges, TryRebindHotkey);
     }
+
+    /// <summary>
+    /// 依設定註冊快捷鍵;設定的組合被佔用就依序試備用鍵(只在本次執行生效,不寫回設定)。
+    /// 結果留在 _activeHotkey / _hotkeyFellBack,由呼叫端負責讓使用者看見。
+    /// </summary>
+    private void StartHotkey()
+    {
+        _wantedHotkey = HotkeySpec.FromSettingOrDefault(_settings.Hotkey);
+        _hotkeyFellBack = false;
+        if (_hotkey.Register(_wantedHotkey))
+        {
+            _activeHotkey = _wantedHotkey;
+            return;
+        }
+
+        _wantedHotkeyError = _hotkey.LastError;
+        foreach (var fallback in HotkeySpec.Fallbacks)
+        {
+            if (fallback != _wantedHotkey && _hotkey.Register(fallback))
+            {
+                _activeHotkey = fallback;
+                _hotkeyFellBack = true;
+                return;
+            }
+        }
+
+        _activeHotkey = null;
+    }
+
+    /// <summary>
+    /// 設定視窗按「儲存」時呼叫:實際註冊看看新組合。成功回 null;失敗回給人看的原因,
+    /// 並把先前有效的快捷鍵接回去,設定視窗據此擋下儲存。
+    /// </summary>
+    private string? TryRebindHotkey(HotkeySpec spec)
+    {
+        // 與已存的設定相同 = 使用者沒動它;此時即使正在用備用鍵,也不該因為主鍵仍被佔用而擋住其他設定的儲存。
+        if (spec == HotkeySpec.FromSettingOrDefault(_settings.Hotkey) || spec == _activeHotkey)
+        {
+            return null;
+        }
+
+        var previous = _activeHotkey;
+        if (_hotkey.Register(spec))
+        {
+            _wantedHotkey = spec;
+            _activeHotkey = spec;
+            _hotkeyFellBack = false;
+            RefreshHotkeyUi();
+            return null;
+        }
+
+        int error = _hotkey.LastError;
+        if (previous is { } p)
+        {
+            _hotkey.Register(p);
+        }
+
+        return error == 1409
+            ? $"{spec.ToDisplay()} 已被其他程式註冊,FlashGrab 用不到。請換一組。"
+            : $"{spec.ToDisplay()} 無法註冊(Windows 錯誤碼 {error})。請換一組。";
+    }
+
+    /// <summary>快捷鍵狀態變動後,同步托盤選單警示列與托盤提示文字。</summary>
+    private void RefreshHotkeyUi()
+    {
+        if (_activeHotkey is null)
+        {
+            _hotkeyWarnItem.Text = "⚠ 快捷鍵未啟用 — 點此更改";
+            _hotkeyWarnItem.Visible = true;
+        }
+        else if (_hotkeyFellBack)
+        {
+            _hotkeyWarnItem.Text = $"⚠ 改用 {_activeHotkey.Value.ToDisplay()}({_wantedHotkey.ToDisplay()} 被佔用)— 點此更改";
+            _hotkeyWarnItem.Visible = true;
+        }
+        else
+        {
+            _hotkeyWarnItem.Visible = false;
+        }
+
+        UpdateAiStatus();
+    }
+
+    /// <summary>快捷鍵出問題時的醒目提示:置頂對話框,不依賴系統通知(勿擾模式下氣泡會被吞掉)。</summary>
+    private void AnnounceHotkeyProblem(string message)
+    {
+        using var owner = new Form
+        {
+            TopMost = true,
+            ShowInTaskbar = false,
+            FormBorderStyle = FormBorderStyle.None,
+            StartPosition = FormStartPosition.Manual,
+            Location = new Point(-32000, -32000),
+            Size = new Size(1, 1),
+        };
+        owner.Show();
+        var answer = MessageBox.Show(owner, message, "FlashGrab 快捷鍵",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (answer == DialogResult.Yes)
+        {
+            owner.Close();
+            OpenSettings();
+        }
+    }
+
+    /// <summary>沒有進行中的 AI 狀態時,托盤圖示的提示文字。NotifyIcon.Text 上限 63 字元。</summary>
+    private string IdleTrayText() => _activeHotkey is { } hk
+        ? $"FlashGrab — 螢幕智慧取字 ({hk})"
+        : "FlashGrab ⚠ 快捷鍵未啟用(右鍵→設定)";
 
     /// <summary>設定視窗儲存後:重建 OCR 引擎並同步托盤選單的勾選狀態。</summary>
     private void ApplySettingsChanges()
@@ -455,7 +592,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             _trayIcon.Text = on
                 ? $"FlashGrab — AI 增強:{route}(框選按住 Shift)"
-                : "FlashGrab — 螢幕智慧取字 (Win+Shift+C)";
+                : IdleTrayText();
         }
     }
 
@@ -574,12 +711,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private static void ShowAbout()
+    private void ShowAbout()
     {
         MessageBox.Show(
             "FlashGrab v0.4.1(Phase 4 選配 AI 增強)\n\n" +
             "一鍵喚醒 Windows 原生 OCR,將螢幕上的文字與程式碼\n化為剪貼簿裡乾淨的結構化資料。\n\n" +
-            "快捷鍵:Win + Shift + C\n" +
+            $"快捷鍵:{(_activeHotkey is { } hk ? hk.ToDisplay() : "未啟用(請到設定更改)")}\n" +
             "AI 增強(選配):框選時按住 Shift,改用視覺模型\n(本地 Ollama 離線,或免費/付費雲端)。",
             "關於 FlashGrab",
             MessageBoxButtons.OK, MessageBoxIcon.Information);
