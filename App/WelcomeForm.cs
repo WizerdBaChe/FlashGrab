@@ -9,8 +9,9 @@ namespace FlashGrab.App;
 internal static class WelcomeForm
 {
     /// <param name="appIcon">視窗圖示(取自托盤圖示);可為 null。</param>
+    /// <param name="hotkeyText">目前生效的快捷鍵(顯示用);null = 沒有可用的快捷鍵。</param>
     /// <param name="openSettings">按「開啟設定選單」時呼叫(由呼叫端彈出托盤右鍵選單)。</param>
-    public static void Show(Icon? appIcon, Action openSettings)
+    public static void Show(Icon? appIcon, string? hotkeyText, Action openSettings)
     {
         using var form = new Form
         {
@@ -46,7 +47,7 @@ internal static class WelcomeForm
             Height = 150,
             Text =
                 "一鍵把螢幕上看得見的文字 / 程式碼,變成剪貼簿裡乾淨的文字。\n\n" +
-                "‧ 取字快捷鍵: Win + Shift + C  → 框選一塊區域即可\n" +
+                $"‧ 取字快捷鍵: {hotkeyText ?? "(目前未啟用,請開啟設定更改)"}  → 框選一塊區域即可\n" +
                 "‧ 程式常駐於系統匣(右下角),閒置不耗資源\n" +
                 "‧ 右鍵托盤圖示可設定:辨識語言、段落重排、AI 增強(選配)\n" +
                 "‧ AI 增強:框選放開的瞬間按住 Shift,改用視覺模型辨識\n\n" +
