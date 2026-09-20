@@ -285,3 +285,41 @@
 - Table captures now lose column alignment by design. If that turns out to matter more than clean chip rows, `JoinRow` is the single reversal point.
 - Row-merge heuristic is untested against multi-COLUMN documents (two text columns side by side at the same Y) — those will now merge into one line per row, which may or may not be wanted. No evidence either way yet.
 - Carried forward unchanged: exe unsigned → SmartScreen on first run; cross-screen / mixed-DPI verification; model "non-bundled resource" scheme; single-file build not reproducible across build directories (Phase 5); AssetVault `single-file-publish/verify.ps1` one-sided guard (handled in the AssetVault session).
+
+---
+
+# Phase Checkpoint
+- Project: FlashGrab
+- Phase: Phase 7 – configurable capture hotkey + loud failure (v0.5.0)
+- Status: completed (code, PR #8, tag and release done; user confirmed the new build works on their machine)
+- Date: 2026-09-21
+- Language note: English, per the record contract adopted at Phase 5.
+
+## Goals
+- Diagnose a user report: the release build did nothing on Win+Shift+C and showed no notice.
+- Make the shortcut configurable and make a registration failure impossible to miss.
+
+## Decisions
+- **Root cause was environmental, not a code defect.** On the reporting machine `RegisterHotKey(Win+Shift+C)` returns 1409 with FlashGrab NOT running, while other Win+Shift combos are free — another program owns the combo. Windows exposes no API to name the holder, so it was never identified.
+- **The startup failure balloon was the weak point**: Do Not Disturb / notification settings swallow it, so a registration failure looked like a dead app. Failure feedback therefore goes through a topmost `MessageBox` (owner = hidden topmost form), not a toast; a toast is still sent as a bonus.
+- **Fallback keys (user delegated the choice): Win+Shift+X → Ctrl+Alt+C → Ctrl+Alt+Shift+C**, all probed free on the reporting machine. Fallbacks are runtime-only and never written to `settings.json`, so clearing the conflict returns the user to their configured key.
+- **Settings UI = modifier checkboxes + key dropdown, not "press the keys to record"**: Win combos are often eaten by the system or by the program holding them, so a recorder cannot be trusted. At least one modifier is required (a bare letter would swallow normal typing).
+- **Save registers for real** (`TryRebindHotkey`) and refuses to save on failure, restoring the previous key. A combo equal to the already-saved setting skips the check, otherwise a user on a fallback key could not save an unrelated setting while the primary stays taken.
+- **Display order Win → Ctrl → Alt → Shift** so the default still reads "Win + Shift + C" (first cut printed "Shift + Win + C"; caught by a test, fixed before merge).
+- Version 0.4.3 → 0.5.0 (new user-facing capability).
+
+## Changes
+- `Trigger/HotkeySpec.cs` (new), `Trigger/GlobalHotkey.cs` (re-register, `Unregister`, `LastError`), `App/Settings.cs` (`Hotkey`), `App/SettingsForm.cs`, `App/TrayApplicationContext.cs`, `App/WelcomeForm.cs`, both READMEs, `FlashGrab.csproj`.
+- PR #8 squash-merged as `21e0b35`; branch deleted (remote heads = `main` only); tag `v0.5.0` on `21e0b35`; release `v0.5.0` with `FlashGrab-Portable.exe` + `SHA256SUMS.txt`.
+- Shipped hash: `f9115af339c73c39e80cccc9c458fcba448d812a631aab1b57fe465e4370c642`; the exe downloaded back from the release hashes identically. It was rebuilt on `main` after the merge — the pre-merge branch build hashed `4967a55c…`, which is NOT the released file.
+
+## Verification
+- Throwaway harness in the session scratchpad (NOT committed): 13 `HotkeySpec` parse cases incl. 6 negatives, plus real `RegisterHotKey` re-register / unregister / collision→1409. All pass; the display-order case failed first and drove the fix.
+- Published exe on the reporting machine (combo really taken): FlashGrab held Win+Shift+X and the dialog appeared. The user then confirmed the new build works.
+- The hotkey probe method itself was calibrated: five unused Win+Shift combos read free, C/S/M read held. An earlier "held while not running" reading was invalid because an instance was running — corrected in the session.
+- NOT verified by me: the look of the new settings row and the save-rejected dialog (the user's manual acceptance covered "new build works", not each screen); behaviour across sessions/desktops. Still no test project in the repo.
+
+## Open Questions / TODO
+- The program that owns Win+Shift+C on the reporting machine is unidentified.
+- The `About` dialog still says "v0.4.1(Phase 4…)" — stale text predating this phase, not touched.
+- Carried forward unchanged: unsigned exe → SmartScreen; cross-screen / mixed-DPI verification; single-file build not reproducible across build directories (confirmed again: branch build ≠ main build); OCR row-reconstruction real-capture acceptance from Phase 6 still outstanding.
