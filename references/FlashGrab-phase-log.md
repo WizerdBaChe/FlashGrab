@@ -321,5 +321,11 @@
 
 ## Open Questions / TODO
 - The program that owns Win+Shift+C on the reporting machine is unidentified.
-- The `About` dialog still says "v0.4.1(Phase 4…)" — stale text predating this phase, not touched.
+- ~~The `About` dialog still says "v0.4.1(Phase 4…)"~~ — fixed in v0.5.1 (see addendum below).
 - Carried forward unchanged: unsigned exe → SmartScreen; cross-screen / mixed-DPI verification; single-file build not reproducible across build directories (confirmed again: branch build ≠ main build); OCR row-reconstruction real-capture acceptance from Phase 6 still outstanding.
+
+## Addendum — v0.5.1 (2026-09-21, same session)
+- `App/TrayApplicationContext.cs`: About dialog reads the assembly version (`Major.Minor.Build`, sourced from the csproj `Version`) instead of a hard-coded string; dropped the stale "Phase 4" label. Commit `3f0a208`; version bump `eb28f8b`; tag `v0.5.1` on `eb28f8b`; direct to `main` (text-only, single file), no PR.
+- Release `v0.5.1`, hash `2d9048904b9f673f07115154bb9c215aad7ffd62a43fef50ed19f460e3846032`; the exe downloaded back from the release hashes identically. The exe's ProductVersion is `0.5.1+<commit sha>` — the embedded commit sha is why builds of different commits never hash the same (explains Phase 5's "not reproducible across build directories" only in part; same-commit-different-directory is still unexplained).
+- Hotkey-holder hunt: `Win+Shift+` letters A C M P R S T V W are held on the reporting machine; PowerToys is not installed; stopping Photos and Everything did not free Win+Shift+C. Holder still unidentified; the user-facing answer is to pick another combo in Settings.
+- NOT verified: the About dialog on screen (assembly version read back as 0.5.0 on the v0.5.0 build; v0.5.1 relies on the same mechanism).
