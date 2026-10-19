@@ -1,4 +1,5 @@
 # .NET build output
+# class: regenerable
 bin/
 obj/
 
@@ -8,5 +9,6 @@ obj/
 *.user
 
 # Publish output
+# class: regenerable
 publish/
 *.zip
