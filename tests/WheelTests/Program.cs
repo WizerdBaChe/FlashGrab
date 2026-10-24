@@ -62,61 +62,88 @@ Check("wrong length -> default", RadialWheel.ResolveLoadout(new string?[] { "ai.
 Check("library ids unique", RadialWheel.Library.Select(i => i.Id).Distinct().Count(), RadialWheel.Library.Count);
 Check("every group <= 8 children", RadialWheel.Library.Where(i => i.IsGroup).All(g => g.Children!.Count <= 8), true);
 
-// ---- expansion threshold ----
-Check("expand at 1.31x on slot", RadialWheel.ShouldExpand(0, -131, 100, 0), true);
-Check("no expand at 1.29x", RadialWheel.ShouldExpand(0, -129, 100, 0), false);
-Check("no expand wrong slot", RadialWheel.ShouldExpand(131, 0, 100, 0), false);
+// ---- fan geometry (rung 0: example tests at the wedge boundaries) ----
+Check("offsets 5", string.Join(",", RadialWheel.FanOffsets(5)), "0,36,-36,72,-72");
+Check("offsets capped at 5", RadialWheel.FanOffsets(7).Length, 5);
+double Rad(double deg) => deg * Math.PI / 180;
+int Hit(double deg, int slot, int n) => RadialWheel.FanHit(Math.Sin(Rad(deg)) * 200, -Math.Cos(Rad(deg)) * 200, slot, n);
+Check("fan straight = child 0", Hit(0, 0, 5), 0);
+Check("fan +17.9 = child 0", Hit(17.9, 0, 5), 0);
+Check("fan +18.1 = child 1 (clockwise)", Hit(18.1, 0, 5), 1);
+Check("fan -18.1 = child 2 (counter-clockwise)", Hit(-18.1, 0, 5), 2);
+Check("fan +53.9 = child 1", Hit(53.9, 0, 5), 1);
+Check("fan +54.1 = child 3", Hit(54.1, 0, 5), 3);
+Check("fan -54.1 = child 4", Hit(-54.1, 0, 5), 4);
+Check("fan +90.1 outside span", Hit(90.1, 0, 5), -1);
+Check("3 children: +54.1 outside span", Hit(54.1, 0, 3), -1);
+Check("wrap across N: NW group, N pointer = child 1", Hit(0, 7, 5), 1);
 
-// ---- session: two levels ----
+// ---- session: fan open / collapse ----
 string? NoAi(WheelAction a) => a == WheelAction.AiText ? "AI off" : null;
 var scr = new Rectangle(0, 0, 1920, 1080);
 WheelSession Fresh() { var s = new WheelSession(def, NoAi); s.Open(new Point(900, 500), scr, 170); return s; }
 var c0 = new Point(900, 500);
-Point At(Point c, double ang, double dist) => new((int)Math.Round(c.X + Math.Sin(ang * Math.PI / 180) * dist), (int)Math.Round(c.Y - Math.Cos(ang * Math.PI / 180) * dist));
+Point At(Point c, double ang, double dist) => new((int)Math.Round(c.X + Math.Sin(Rad(ang)) * dist), (int)Math.Round(c.Y - Math.Cos(Rad(ang)) * dist));
+(WheelOutcome, WheelAction?) Pick(WheelRelease r) => (r.Outcome, r.Action);
+var commit = (WheelAction a) => (WheelOutcome.Commit, (WheelAction?)a);
 
 var s1 = Fresh();
 Check("centre release = Default", s1.Release(c0).Outcome, WheelOutcome.Default);
 s1 = Fresh();
-var r1 = s1.Release(At(c0, 0, 150));
-Check("unexpanded group = default child", (r1.Outcome, r1.Action), (WheelOutcome.Commit, (WheelAction?)WheelAction.CopyText));
-s1 = Fresh();
-var rFar = s1.Release(At(c0, 90, 5000));
-Check("leaf far out still selects (no outer limit)", (rFar.Outcome, rFar.Action, s1.Level), (WheelOutcome.Commit, (WheelAction?)WheelAction.CopyOneLine, 1));
-s1 = Fresh();
-s1.Move(At(c0, 0, 170 * 1.29));
-Check("1.29x on group stays level 1", s1.Level, 1);
-s1.Move(At(c0, 0, 170 * 1.31));
-Check("1.31x on group -> level 2", s1.Level, 2);
-Check("sub centred at crossing", s1.SubCenter, At(c0, 0, 170 * 1.31));
-Check("sub radius", s1.SubRadius, 136);
-var sc = s1.SubCenter;
-var rSub = s1.Release(At(sc, 90, 120)); // children fill slots 0.. in order: N copy, NE one line, E keep lines
-Check("sub slot E = 3rd child", (rSub.Outcome, rSub.Action), (WheelOutcome.Commit, (WheelAction?)WheelAction.CopyKeepLines));
-s1 = Fresh(); s1.Move(At(c0, 0, 230)); sc = s1.SubCenter;
-Check("sub slot NE = 2nd child", s1.Release(At(sc, 45, 120)).Action, (WheelAction?)WheelAction.CopyOneLine);
-s1 = Fresh(); s1.Move(At(c0, 0, 230)); sc = s1.SubCenter;
-var rSubDead = s1.Release(sc);
-Check("sub dead zone = group default", rSubDead.Action, (WheelAction?)WheelAction.CopyText);
-s1 = Fresh(); s1.Move(At(c0, 0, 230)); sc = s1.SubCenter;
-Check("sub empty slot stays", s1.Release(At(sc, 180, 120)).Outcome, WheelOutcome.Stay);
-s1 = Fresh(); s1.Move(At(c0, 0, 230));
-Check("Back from level 2", (s1.Back(), s1.Level), (true, 1));
-Check("Back at level 1 is false", s1.Back(), false);
+Check("group below ring = default child", Pick(s1.Release(At(c0, 0, 150))), commit(WheelAction.CopyText));
+s1 = Fresh(); s1.Move(At(c0, 0, 170 * 0.99));
+Check("0.99R on group: fan closed", s1.FanOpen, false);
+s1.Move(At(c0, 0, 170));
+Check("1.0R on group: fan open", (s1.FanOpen, s1.FanSlot, s1.FanHover), (true, 0, 0));
+s1.Move(At(c0, 0, 170 * 0.95));
+Check("0.95R after open: still open, no child hovered", (s1.FanOpen, s1.FanHover), (true, -1));
+s1.Move(At(c0, 0, 170 * 0.89));
+Check("0.89R: collapsed, back on group slot", (s1.FanOpen, s1.Hover), (false, 0));
+s1.Move(At(c0, 0, 200));
+Check("reopens after collapse", s1.FanOpen, true);
+
+s1 = Fresh(); s1.Move(At(c0, 0, 200));
+Check("fan child 0 straight out", Pick(s1.Release(At(c0, 0, 200))), commit(WheelAction.CopyText));
+s1 = Fresh(); s1.Move(At(c0, 0, 200));
+Check("fan child 1 at +36", Pick(s1.Release(At(c0, 36, 200))), commit(WheelAction.CopyOneLine));
+s1 = Fresh(); s1.Move(At(c0, 0, 200));
+Check("fan child 2 at -36", Pick(s1.Release(At(c0, -36, 200))), commit(WheelAction.CopyKeepLines));
+s1 = Fresh(); s1.Move(At(c0, 0, 200));
+Check("fan child far out (no outer limit)", Pick(s1.Release(At(c0, -36, 900))), commit(WheelAction.CopyKeepLines));
+s1 = Fresh(); s1.Move(At(c0, 0, 200));
+var rOut = s1.Release(At(c0, 90, 200));
+Check("outside fan span = Stay, fan kept", (rOut.Outcome, s1.FanOpen), (WheelOutcome.Stay, true));
+s1 = Fresh(); s1.Move(At(c0, 0, 200));
+Check("open, release at 0.95R = group default", Pick(s1.Release(At(c0, 0, 170 * 0.95))), commit(WheelAction.CopyText));
+s1 = Fresh(); s1.Move(At(c0, 180, 200));
+Check("image fan +36 = copy image", Pick(s1.Release(At(c0, 216, 200))), commit(WheelAction.CopyImage));
+s1 = Fresh(); s1.Move(At(c0, 180, 200));
+Check("image fan -36 = JPG", Pick(s1.Release(At(c0, 144, 200))), commit(WheelAction.SaveJpg));
+
+s1 = Fresh(); s1.Move(At(c0, 90, 170 * 5));
+Check("leaf at 5R never opens a fan", s1.FanOpen, false);
+Check("leaf at 5R still selects", Pick(s1.Release(At(c0, 90, 170 * 5))), commit(WheelAction.CopyOneLine));
 s1 = Fresh();
 var rAi = s1.Release(At(c0, 45, 150));
 Check("unavailable AI stays + reason", (rAi.Outcome, s1.Status), (WheelOutcome.Stay, "AI off"));
 s1 = Fresh();
-Check("empty level-1 slot stays", s1.Release(At(c0, 270, 150)).Outcome, WheelOutcome.Stay);
-s1 = Fresh();
-s1.Move(At(c0, 90, 400)); // leaf E far out: must NOT expand
-Check("leaf never expands", s1.Level, 1);
-// image group (S): expand, pick N child = PNG? children: png, copy, jpg -> slot 2 (E) = jpg
-s1 = Fresh(); s1.Move(At(c0, 180, 230)); sc = s1.SubCenter;
-Check("image group E child = JPG", s1.Release(At(sc, 90, 100)).Action, (WheelAction?)WheelAction.SaveJpg);
-// expansion near screen edge: sub wheel clamped inside
-var edge = new WheelSession(def, NoAi); edge.Open(new Point(10, 10), scr, 170);
-edge.Move(new Point(edge.Center.X, edge.Center.Y - 230));
-Check("sub clamped inside screen", edge.SubCenter.Y >= edge.SubRadius + 16, true);
+Check("empty slot stays", s1.Release(At(c0, 270, 150)).Outcome, WheelOutcome.Stay);
+
+// children cap
+var leaf = (int i) => new WheelItem("t" + i, "T" + i, "", WheelAction.CopyText);
+var big = new WheelItem("big", "Big", "", Children: Enumerable.Range(0, 7).Select(leaf).ToArray());
+var bigSlots = new WheelItem?[] { big, null, null, null, null, null, null, null };
+var sb = new WheelSession(bigSlots, NoAi); sb.Open(c0, scr, 170); sb.Move(At(c0, 0, 200));
+Check("fan shows at most 5 children", sb.FanChildren.Count, 5);
+
+// placement reach: group in loadout -> 1.6R keeps the fan band on screen
+var corner = new WheelSession(def, NoAi); corner.Open(new Point(5, 5), scr, 170);
+Check("reach 1.6R with group", corner.Center, new Point(288, 288));
+Check("fan outer edge on screen", corner.Center.Y - 170 * RadialWheel.FanOuterRatio >= 0, true);
+var leafOnly = new WheelItem?[] { def[1], def[2], null, null, null, null, null, null };
+var lc = new WheelSession(leafOnly, NoAi); lc.Open(new Point(5, 5), scr, 170);
+Check("reach 1R without group", lc.Center, new Point(186, 186));
+
 bool threw = false; try { new WheelSession(new WheelItem?[3], NoAi); } catch (ArgumentException) { threw = true; }
 Check("session rejects non-8 slots", threw, true);
 

@@ -31,7 +31,8 @@ internal sealed record WheelItem(string Id, string Label, string Detail, WheelAc
 /// 第一層固定 8 格(0 = 正上方,順時針);格子不會因項目增減而重新均分,
 /// 沒放東西的格子就是空格。放不下的項目留在功能庫,由設定畫面換上輪盤。
 /// 選取只看方向:超出中心死區後,角度決定格子,沒有外圈上限。
-/// 例外是群組格:沿它的方向越過外圈 <see cref="ExpandRatio"/> 倍時展開二級輪盤。
+/// 例外是群組格:沿它的方向到達外圈時,子項以扇形色帶從該格往外散出(同一個圓心),
+/// 退回外圈 0.9 倍以內自動收合。群組最多 <see cref="MaxGroupChildren"/> 個子項。
 /// </summary>
 internal static class RadialWheel
 {
@@ -40,11 +41,23 @@ internal static class RadialWheel
     /// <summary>死區半徑佔輪盤半徑的比例;移回這裡放開 = 不選任何格。</summary>
     public const double DeadZoneRatio = 0.42;
 
-    /// <summary>群組格展開門檻:游標距中心達外圈半徑的這個倍數。</summary>
-    public const double ExpandRatio = 1.3;
+    /// <summary>群組格的扇面:游標沿群組方向到達外圈(這個倍數)時展開。</summary>
+    public const double FanOpenRatio = 1.0;
 
-    /// <summary>二級輪盤半徑相對第一層的比例。</summary>
-    public const double SubRadiusRatio = 0.8;
+    /// <summary>扇面展開後,游標退回到外圈這個倍數以內才收合(緩衝帶,避免在邊界忽開忽關)。</summary>
+    public const double FanCollapseRatio = 0.9;
+
+    /// <summary>扇面色帶外緣相對外圈半徑的倍數。</summary>
+    public const double FanOuterRatio = 1.55;
+
+    /// <summary>扇面裡每個子項佔的角度。</summary>
+    public const double FanChildDegrees = 36;
+
+    /// <summary>群組最多幾個子項(5 × 36° = 180°,再多就壓過太多鄰格方向)。</summary>
+    public const int MaxGroupChildren = 5;
+
+    /// <summary>輪盤含群組時,擺位要讓扇面外緣也留在螢幕內:以外圈的這個倍數當保留半徑。</summary>
+    public const double FanPlaceReachRatio = 1.6;
 
     private static readonly WheelItem CopyText = new("text.copy", "複製文字", "內建 OCR,照設定處理段落", WheelAction.CopyText);
     private static readonly WheelItem OneLine = new("text.oneline", "合成一行", "去掉換行,貼進搜尋框或表單", WheelAction.CopyOneLine);
@@ -111,11 +124,41 @@ internal static class RadialWheel
         return ((index % SectorCount) + SectorCount) % SectorCount;
     }
 
-    /// <summary>沿 slot 的方向越過外圈 ExpandRatio 倍時為 true(呼叫端再確認該格是群組)。</summary>
-    public static bool ShouldExpand(double dx, double dy, double outerRadius, int slot)
+    /// <summary>
+    /// 扇面子項相對群組方向的偏移角(度):預設子項(第 0 個)正對群組方向,
+    /// 之後順時針、逆時針交替:0, +36, −36, +72, −72。
+    /// </summary>
+    public static double[] FanOffsets(int count)
     {
-        double reach = outerRadius * ExpandRatio;
-        return dx * dx + dy * dy >= reach * reach && SectorAt(dx, dy, 0) == slot;
+        var offsets = new double[Math.Min(count, MaxGroupChildren)];
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            int step = (i + 1) / 2;
+            offsets[i] = (i % 2 == 1 ? 1 : -1) * step * FanChildDegrees;
+        }
+
+        return offsets;
+    }
+
+    /// <summary>
+    /// 扇面打開時,依游標相對中心的角度求子項索引;不在任何子項的 36° 楔形內回 -1。
+    /// 只看角度不看距離(呼叫端負責「距離 ≥ 外圈」的判斷),所以扇面內沒有外緣上限。
+    /// </summary>
+    public static int FanHit(double dx, double dy, int groupSlot, int childCount)
+    {
+        double angle = Math.Atan2(dx, -dy) * 180 / Math.PI;
+        double offset = angle - SectorAngle(groupSlot) * 180 / Math.PI;
+        offset = ((offset + 180) % 360 + 360) % 360 - 180; // 收進 −180..180
+        var offsets = FanOffsets(childCount);
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            if (offset >= offsets[i] - FanChildDegrees / 2 && offset < offsets[i] + FanChildDegrees / 2)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>格子中心角(弧度,0 = 上,順時針)。</summary>
