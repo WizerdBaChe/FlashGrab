@@ -336,3 +336,30 @@
 - Microsoft's Windows keyboard-shortcut page still lists "Windows logo key + Shift + C — Open the charms menu" (a Windows 8 shortcut). Conclusion (strong inference, not proven): the Windows shell (Explorer) reserves Win+Shift+C as the legacy charms hotkey; the other held letters match shell shortcuts (S snip, R record, M restore, T taskbar). So Win+Shift+C is taken on stock Windows 11, not just on this machine.
 - Not proven because confirming needs restarting Explorer / stopping processes, which auto-mode blocked. Confirmation path for the user: restart Explorer and probe within the restart window, or set `DisabledHotkeys` under HKCU Explorer\Advanced (also disables Win+C) — a user decision, not done.
 - Consequence for the product: the shipped default can never register on stock Windows 11; every user lands on the fallback Win+Shift+X. Changing the default is a UX default change → pending user ruling.
+- **Resolved same day:** user ruled the default to Win+Shift+X (likely a Windows-update side effect; the original design test did not hit it). Commit `150e7e8`; fallbacks now Ctrl+Alt+C → Ctrl+Alt+Shift+C; settings store null for the default, so no migration.
+
+# Phase Checkpoint
+- Project: FlashGrab
+- Phase: Phase 8 – output wheel (FormatWheel-inspired radial picker) + default hotkey Win+Shift+X
+- Status: USER-ACCEPTED, MERGED LOCALLY, NOT PUSHED — `main` at `3b19953` (ahead of origin by 6); no version bump, no release
+- Date: 2026-10-24
+- Transcript: c7ad48e9-ab4d-4382-a6be-5f0a28cca045.jsonl
+
+## Goals
+- Rebuild FormatWheel's wheel picker (github.com/Elise616/FormatWheel, MIT; ideas only, no code copied) inside the capture overlay, as one of two test beds (twin: HTMLToolsLobby drop wheel) before shelving it in AssetVault.
+
+## Decisions
+- Summon = tap Ctrl while dragging (Shift-at-release already means AI and is user-accepted, so it stays untouched). Release in the level-1 centre = the old flow.
+- User: fixed 8 slots + library/loadout + same-type sub-wheel (supersedes an equal-split ring). Default loadout keeps every v1 position: N 文字▲ (default copy), NE AI, E one line, SE copy image, S 圖片▲ (default PNG), SW keep lines, W/NW empty.
+- Group slot expands when the pointer crosses 1.3x the outer radius in its direction; sub-wheel (0.8x radius) centred at the crossing point; sub dead zone = group default; Ctrl in level 2 = back. Leaf slots never expand and have no outer limit.
+
+## Changes
+- `Capture/RadialWheel.cs` (library, default loadout, ResolveLoadout, SectorAt, ShouldExpand, Place, JoinLines), `Capture/WheelSession.cs` (pure two-level state machine), `Capture/OverlayForm.cs` (events + drawing), `App/Settings.cs` (`WheelLoadout`), `App/SettingsForm.cs` (「輪盤配置」 3x3 grid + 還原預設; Load-time row heights because DropDownList PreferredSize is shorter than its DPI-scaled height), `App/TrayApplicationContext.cs` (actions, stale-id notice), `Output/ClipboardWriter.cs` (WriteImage, ImageSaver PNG/JPG), `Trigger/HotkeySpec.cs`, both READMEs.
+- First test project in the repo: `tests/WheelTests` (`dotnet run --project tests/WheelTests` → 65 pass; argument `control` adds a deliberately wrong expectation → exit 1). Excluded from the main build via `Compile Remove="tests\**"`.
+- Verified: build 0 warnings / 0 errors; overlay and settings rendered off-screen and read by eye; user accepted on the real screen.
+
+## Open Questions / TODO
+- Push is the user's call.
+- Pre-existing, not touched: settings left-column labels wrap (「辨識語言」), the 「偵測」 button is clipped — probably the same PreferredSize-vs-DPI cause as the grid fix.
+- User floated a v2 sub-wheel: children fan out as an arc beyond the group slot, pulling back to the centre collapses it — under evaluation, not built.
+- Next after the wheel settles: shelve it as an AssetVault candidate.
