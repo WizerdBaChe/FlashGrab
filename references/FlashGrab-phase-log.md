@@ -329,3 +329,10 @@
 - Release `v0.5.1`, hash `2d9048904b9f673f07115154bb9c215aad7ffd62a43fef50ed19f460e3846032`; the exe downloaded back from the release hashes identically. The exe's ProductVersion is `0.5.1+<commit sha>` — the embedded commit sha is why builds of different commits never hash the same (explains Phase 5's "not reproducible across build directories" only in part; same-commit-different-directory is still unexplained).
 - Hotkey-holder hunt: `Win+Shift+` letters A C M P R S T V W are held on the reporting machine; PowerToys is not installed; stopping Photos and Everything did not free Win+Shift+C. Holder still unidentified; the user-facing answer is to pick another combo in Settings.
 - NOT verified: the About dialog on screen (assembly version read back as 0.5.0 on the v0.5.0 build; v0.5.1 relies on the same mechanism).
+
+## Addendum — Win+Shift+C holder diagnosis (2026-10-24)
+- Probe re-run with FlashGrab NOT running: Win+Shift + A C M P R S T V W still return 1409 (same set as 2026-09-21), so the holder is something present on every login, not a user app.
+- A synthetic Win+Shift+C press (keybd_event) changed no foreground window and started no process: the holder swallows it with no visible effect.
+- Microsoft's Windows keyboard-shortcut page still lists "Windows logo key + Shift + C — Open the charms menu" (a Windows 8 shortcut). Conclusion (strong inference, not proven): the Windows shell (Explorer) reserves Win+Shift+C as the legacy charms hotkey; the other held letters match shell shortcuts (S snip, R record, M restore, T taskbar). So Win+Shift+C is taken on stock Windows 11, not just on this machine.
+- Not proven because confirming needs restarting Explorer / stopping processes, which auto-mode blocked. Confirmation path for the user: restart Explorer and probe within the restart window, or set `DisabledHotkeys` under HKCU Explorer\Advanced (also disables Win+C) — a user decision, not done.
+- Consequence for the product: the shipped default can never register on stock Windows 11; every user lands on the fallback Win+Shift+X. Changing the default is a UX default change → pending user ruling.
