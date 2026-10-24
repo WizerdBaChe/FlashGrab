@@ -656,6 +656,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
             Rectangle region;
             bool useAi;
+            WheelAction? action;
             using (var overlay = new OverlayForm(snapshot, aiAvailable))
             {
                 if (overlay.ShowDialog() != DialogResult.OK || overlay.SelectedRegion is not { } selected)
@@ -664,8 +665,29 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 }
 
                 region = selected;
-                useAi = overlay.UseAiRequested;
+                action = overlay.ChosenAction;
+                useAi = overlay.UseAiRequested || action == WheelAction.AiText;
                 overlay.BackgroundImage = null; // 快照由本方法持有/釋放,避免 Form 連帶處理
+            }
+
+            // 輪盤上的「圖片」動作不需要 OCR。
+            if (action is WheelAction.CopyImage or WheelAction.SaveImage)
+            {
+                using var shot = ScreenGrabber.Crop(snapshot, region);
+                if (action == WheelAction.CopyImage)
+                {
+                    ClipboardWriter.WriteImage(shot);
+                    SystemSounds.Asterisk.Play();
+                    _trayIcon.ShowBalloonTip(1200, "FlashGrab", $"已複製 {shot.Width}×{shot.Height} 圖片到剪貼簿。", ToolTipIcon.Info);
+                }
+                else
+                {
+                    string saved = ImageSaver.SavePng(shot);
+                    SystemSounds.Asterisk.Play();
+                    _trayIcon.ShowBalloonTip(2500, "FlashGrab", $"已存檔:{saved}", ToolTipIcon.Info);
+                }
+
+                return;
             }
 
             // 雲端外傳一次性告知:不同意則本次取消(不退回 Tier 0,以免誤把該保密的內容外傳)
@@ -686,7 +708,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
             using var bitmap = ScreenGrabber.Crop(snapshot, region);
             var document = await engine.RecognizeAsync(bitmap);
-            string text = _pipeline.Run(document, _settings.ReflowParagraphs);
+            bool reflow = action switch
+            {
+                WheelAction.CopyKeepLines => false,
+                _ => _settings.ReflowParagraphs,
+            };
+            string text = _pipeline.Run(document, reflow);
+            if (action == WheelAction.CopyOneLine)
+            {
+                text = RadialWheel.JoinLines(text);
+            }
 
             if (string.IsNullOrWhiteSpace(text))
             {
