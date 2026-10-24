@@ -6,7 +6,7 @@
 >
 > **Freeze. Grab. OCR. Copy.**
 
-`Win + Shift + C` → **Freeze Frame** → **Offline OCR** → **Smart Cleanup** → **Clipboard**
+`Win + Shift + X` → **Freeze Frame** → **Offline OCR** → **Smart Cleanup** → **Clipboard**
 
 ---
 
@@ -47,7 +47,7 @@ FlashGrab captures the screen **immediately when the shortcut is pressed**, so d
 ## ⚙️ How It Works
 
 ```
-Win + Shift + C
+Win + Shift + X
        │
        ▼
  Freeze Frame
@@ -106,16 +106,19 @@ Need even better recognition for low-contrast text or complex watermarks? Simply
 
 | Action | Result |
 | :--- | :--- |
-| **Win + Shift + C** | Freeze screen and start selection (default; changeable, see below) |
+| **Win + Shift + X** | Freeze screen and start selection (default; changeable, see below) |
 | **Left Mouse Drag** | Select OCR region |
+| **Tap Ctrl while dragging** | Open the output wheel (copy text / AI / one line / copy image / save PNG / keep line breaks); move toward a slot and release |
 | **Hold Shift while releasing** | Trigger Tier 2 AI Vision |
 | **Esc** or **Right Click** | Cancel selection and exit |
 
+> The default used to be `Win + Shift + C`. Current Windows 11 reserves that combination for the shell (the old Charms shortcut), so no program can register it.
+
 ### If the shortcut does nothing
 
-Another running program may already own **Win + Shift + C** (Windows lets only one program hold a global shortcut, and gives no way to see who). FlashGrab never fails silently about it:
+Another running program may already own **Win + Shift + X** (Windows lets only one program hold a global shortcut, and gives no way to see who). FlashGrab never fails silently about it:
 
-* At startup it **falls back automatically** to `Win + Shift + X`, then `Ctrl + Alt + C`, then `Ctrl + Alt + Shift + C` (for this run only; nothing is written to settings), and shows a topmost dialog saying which key is now in effect. It does not rely on toast notifications, which Do Not Disturb swallows.
+* At startup it **falls back automatically** to `Ctrl + Alt + C`, then `Ctrl + Alt + Shift + C` (for this run only; nothing is written to settings), and shows a topmost dialog saying which key is now in effect. It does not rely on toast notifications, which Do Not Disturb swallows.
 * If every combination is taken, the dialog says so, the tray tooltip reads *"shortcut not active"*, and the tray menu gets a red **⚠** entry at the top.
 * To pick your own: tray icon → **Settings → Capture shortcut** (modifier checkboxes + one key: A–Z, 0–9, F1–F12; at least one modifier is required). On **Save**, FlashGrab registers the new combination for real and refuses to save if it is taken. The choice is stored as `"Hotkey": "Ctrl+Alt+C"` in `settings.json`; absent means the default.
 
@@ -149,7 +152,7 @@ lower case; `Get-FileHash` prints upper case — the comparison is case-insensit
 > never be handed to someone by accident.
 
 > **No installer needed — just double-click the `.exe`.**
-> FlashGrab starts **directly in the background** (system tray, bottom-right). A toast confirms *"Running in the background — press Win + Shift + C"*, and a one-time welcome window appears on first launch. There is **no main window**; right-click the tray icon for settings. Running it again while it's already open just shows a reminder instead of opening a second copy.
+> FlashGrab starts **directly in the background** (system tray, bottom-right). A toast confirms *"Running in the background — press Win + Shift + X"*, and a one-time welcome window appears on first launch. There is **no main window**; right-click the tray icon for settings. Running it again while it's already open just shows a reminder instead of opening a second copy.
 
 ---
 
