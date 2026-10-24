@@ -363,3 +363,24 @@
 - Pre-existing, not touched: settings left-column labels wrap (「辨識語言」), the 「偵測」 button is clipped — probably the same PreferredSize-vs-DPI cause as the grid fix.
 - User floated a v2 sub-wheel: children fan out as an arc beyond the group slot, pulling back to the centre collapses it — under evaluation, not built.
 - Next after the wheel settles: shelve it as an AssetVault candidate.
+
+# Phase Checkpoint
+- Project: FlashGrab
+- Phase: Phase 9 – fan-out group children (replaces the recentred sub-wheel)
+- Status: USER-ACCEPTED, MERGED LOCALLY (ff), NOT PUSHED — `main` at `2857af3`; branch `feat/wheel-fan` deleted; no version bump, no release
+- Date: 2026-10-24
+- Transcript: c7ad48e9-ab4d-4382-a6be-5f0a28cca045.jsonl
+
+## Decisions
+- User: group children fan out as an arc band on the SAME centre beyond the group slot; max 5 children; pulling back inside the ring folds it.
+- Geometry: opens at dist >= 1.0R on a group slot, folds at < 0.9R (hysteresis); band 1.0R–1.55R; 36° per child, offsets 0, +36, −36, +72, −72 (children[0] straight out); outside the fan span = Stay; no outer limit inside the span; placement reach 1.6R when the loadout holds a group; back key removed (Ctrl with wheel open = close).
+- Consequence accepted by the user: the fan opens only from the group's own slot angle, so a jump straight to a neighbour's angle picks that neighbour leaf.
+
+## Changes
+- `Capture/RadialWheel.cs` (Fan* constants, FanOffsets, FanHit; ShouldExpand/sub-wheel removed), `Capture/WheelSession.cs` (FanSlot/FanHover state machine), `Capture/OverlayForm.cs` (DrawFan, open-group fill, centre text, hint), both READMEs.
+- Verified: build 0 warnings / 0 errors; `tests/WheelTests` 79 pass, `control` run fails as designed (E sector got 2, want 0); five overlay states rendered off-screen and read by eye; user accepted on the real screen.
+
+## Open Questions / TODO
+- Push is the user's call.
+- Pre-existing settings defects unchanged (label wrap, clipped 「偵測」 button).
+- Next: shelve the wheel as an AssetVault candidate (origin = this repo + HTMLToolsLobby).
