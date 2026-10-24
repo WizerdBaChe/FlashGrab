@@ -1,12 +1,16 @@
 namespace FlashGrab.Trigger;
 
 /// <summary>
-/// 一組全域快捷鍵(修飾鍵 + 主鍵)。以 "Win+Shift+C" 這種字串存進 settings.json,
+/// 一組全域快捷鍵(修飾鍵 + 主鍵)。以 "Win+Shift+X" 這種字串存進 settings.json,
 /// 使用者可直接讀、直接改;解析失敗一律視為「未設定」而不是丟例外。
 /// </summary>
 internal readonly record struct HotkeySpec(ModifierKeys Modifiers, Keys Key)
 {
-    public static readonly HotkeySpec Default = new(ModifierKeys.Win | ModifierKeys.Shift, Keys.C);
+    /// <summary>
+    /// 預設 Win+Shift+X。原本的 Win+Shift+C 在現行 Windows 11 被系統殼層保留
+    /// (舊的 Charms 快捷鍵),一般程式永遠註冊不到,見 references/FlashGrab-phase-log.md。
+    /// </summary>
+    public static readonly HotkeySpec Default = new(ModifierKeys.Win | ModifierKeys.Shift, Keys.X);
 
     /// <summary>
     /// 主預設鍵被其他程式佔走時,依序嘗試的備用鍵。刻意避開常見系統/輸入法組合;
@@ -14,7 +18,6 @@ internal readonly record struct HotkeySpec(ModifierKeys Modifiers, Keys Key)
     /// </summary>
     public static readonly IReadOnlyList<HotkeySpec> Fallbacks = new[]
     {
-        new HotkeySpec(ModifierKeys.Win | ModifierKeys.Shift, Keys.X),
         new HotkeySpec(ModifierKeys.Control | ModifierKeys.Alt, Keys.C),
         new HotkeySpec(ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift, Keys.C),
     };
