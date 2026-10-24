@@ -657,7 +657,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Rectangle region;
             bool useAi;
             WheelAction? action;
-            using (var overlay = new OverlayForm(snapshot, aiAvailable))
+            var loadout = RadialWheel.ResolveLoadout(_settings.WheelLoadout, out var dropped);
+            if (dropped.Count > 0)
+            {
+                // 設定檔指到功能庫裡沒有的項目(例如舊版留下的 id):那格變空,並明說。
+                _trayIcon.ShowBalloonTip(2500, "FlashGrab", $"輪盤配置有 {dropped.Count} 格找不到項目,已留空:{string.Join(", ", dropped)}", ToolTipIcon.Warning);
+            }
+
+            using (var overlay = new OverlayForm(snapshot, aiAvailable, loadout))
             {
                 if (overlay.ShowDialog() != DialogResult.OK || overlay.SelectedRegion is not { } selected)
                 {
@@ -671,7 +678,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
 
             // 輪盤上的「圖片」動作不需要 OCR。
-            if (action is WheelAction.CopyImage or WheelAction.SaveImage)
+            if (action is WheelAction.CopyImage or WheelAction.SaveImage or WheelAction.SaveJpg)
             {
                 using var shot = ScreenGrabber.Crop(snapshot, region);
                 if (action == WheelAction.CopyImage)
@@ -682,7 +689,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 }
                 else
                 {
-                    string saved = ImageSaver.SavePng(shot);
+                    string saved = action == WheelAction.SaveJpg ? ImageSaver.SaveJpg(shot) : ImageSaver.SavePng(shot);
                     SystemSounds.Asterisk.Play();
                     _trayIcon.ShowBalloonTip(2500, "FlashGrab", $"已存檔:{saved}", ToolTipIcon.Info);
                 }

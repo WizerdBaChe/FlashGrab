@@ -108,7 +108,7 @@ Need even better recognition for low-contrast text or complex watermarks? Simply
 | :--- | :--- |
 | **Win + Shift + X** | Freeze screen and start selection (default; changeable, see below) |
 | **Left Mouse Drag** | Select OCR region |
-| **Tap Ctrl while dragging** | Open the output wheel (copy text / AI / one line / copy image / save PNG / keep line breaks); move toward a slot and release |
+| **Tap Ctrl while dragging** | Open the output wheel: 8 fixed slots, move toward one and release. Slots marked ▲ are groups (Text, Image): flick past the ring to open a second wheel of that group's variants, or release without flicking for the group's default. Tap Ctrl again to go back a level. Choose what sits in each slot under **Settings → Wheel layout**; items not on the wheel stay in the library there. |
 | **Hold Shift while releasing** | Trigger Tier 2 AI Vision |
 | **Esc** or **Right Click** | Cancel selection and exit |
 

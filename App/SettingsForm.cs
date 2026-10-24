@@ -1,4 +1,5 @@
 using System.Drawing;
+using FlashGrab.Capture;
 using FlashGrab.Ocr;
 using FlashGrab.Trigger;
 using Windows.Globalization;
@@ -19,6 +20,12 @@ internal static class SettingsForm
     private static readonly Font BodyFont = new("Segoe UI", 9.75F);
 
     private sealed record LangItem(string? Tag, string Display)
+    {
+        public override string ToString() => Display;
+    }
+
+    /// <summary>輪盤格的下拉項目:功能庫項目 id(null = 空格)。</summary>
+    private sealed record WheelChoice(string? Id, string Display)
     {
         public override string ToString() => Display;
     }
@@ -167,6 +174,65 @@ internal static class SettingsForm
             MaximumSize = new Size(480, 0),
             ForeColor = HintColor,
         }, new Padding(0, 0, 0, 4));
+
+        AddFull(Line(), new Padding(0, 0, 0, 0));
+
+        // ── 輪盤配置:8 格照方位排成 3×3,中心留空;每格從功能庫挑一項 ──
+        AddFull(Header("輪盤配置"), new Padding(0, 4, 0, 2));
+        AddFull(new Label
+        {
+            Text = "框選中按一下 Ctrl 叫出。格子位置固定,換的是格子裡的項目;帶 ▲ 的是群組,往外甩展開細項。",
+            AutoSize = true,
+            MaximumSize = new Size(480, 0),
+            ForeColor = HintColor,
+        }, new Padding(0, 0, 0, 6));
+
+        var wheelGrid = new TableLayoutPanel
+        {
+            ColumnCount = 3,
+            RowCount = 3,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Anchor = AnchorStyles.None,
+        };
+        for (int i = 0; i < 3; i++)
+        {
+            wheelGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+            wheelGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        }
+
+        var loadoutNow = RadialWheel.ResolveLoadout(settings.WheelLoadout, out _);
+        var slotCombos = new ComboBox[RadialWheel.SectorCount];
+        (int Row, int Col)[] cellOf = { (0, 1), (0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (1, 0), (0, 0) };
+        string[] dirName = { "上", "右上", "右", "右下", "下", "左下", "左", "左上" };
+        for (int i = 0; i < RadialWheel.SectorCount; i++)
+        {
+            var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 140, Margin = new Padding(3) };
+            combo.Items.Add(new WheelChoice(null, "(空)"));
+            foreach (var item in RadialWheel.Library)
+            {
+                combo.Items.Add(new WheelChoice(item.Id, item.IsGroup ? $"{item.Label} ▲" : item.Label));
+            }
+
+            combo.AccessibleName = $"輪盤{dirName[i]}格";
+            slotCombos[i] = combo;
+            wheelGrid.Controls.Add(combo, cellOf[i].Col, cellOf[i].Row);
+        }
+
+        void ShowLoadout(IReadOnlyList<WheelItem?> slots)
+        {
+            for (int i = 0; i < slotCombos.Length; i++)
+            {
+                var id = slots[i]?.Id;
+                slotCombos[i].SelectedIndex = Math.Max(0, slotCombos[i].Items.Cast<WheelChoice>().ToList().FindIndex(c => c.Id == id));
+            }
+        }
+
+        ShowLoadout(loadoutNow);
+        var resetWheel = new Button { Text = "還原預設", AutoSize = true, Anchor = AnchorStyles.None, Margin = new Padding(3, 6, 3, 3) };
+        resetWheel.Click += (_, _) => ShowLoadout(RadialWheel.ResolveLoadout(null, out _));
+        wheelGrid.Controls.Add(resetWheel, 1, 1);
+        AddFull(wheelGrid, new Padding(0, 0, 0, 10));
 
         AddFull(Line(), new Padding(0, 0, 0, 0));
 
@@ -351,6 +417,8 @@ internal static class SettingsForm
                 settings.Tier2CloudConsented = false; // 換端點需重新確認雲端外傳同意
             }
 
+            var newLoadout = slotCombos.Select(c => ((WheelChoice)c.SelectedItem!).Id).ToArray();
+            settings.WheelLoadout = newLoadout.SequenceEqual(RadialWheel.DefaultLoadout) ? null : newLoadout;
             settings.ReflowParagraphs = reflow.Checked;
             settings.LanguageTag = ((LangItem)langCombo.SelectedItem!).Tag;
             settings.Tier2BaseUrl = newUrl;
@@ -365,6 +433,18 @@ internal static class SettingsForm
         };
 
         form.Controls.Add(root);
+        form.Load += (_, _) =>
+        {
+            // DropDownList 的 PreferredSize 比 DPI 縮放後的實際高度矮,自動列高會切掉下拉框底邊;
+            // 載入後依實際高度重設列高,再重算視窗高度。
+            int comboRow = slotCombos.Max(c => c.Height + c.Margin.Vertical);
+            int middleRow = Math.Max(comboRow, resetWheel.Height + resetWheel.Margin.Vertical);
+            wheelGrid.RowStyles[0] = new RowStyle(SizeType.Absolute, comboRow);
+            wheelGrid.RowStyles[1] = new RowStyle(SizeType.Absolute, middleRow);
+            wheelGrid.RowStyles[2] = new RowStyle(SizeType.Absolute, comboRow);
+            root.PerformLayout();
+            form.ClientSize = new Size(form.ClientSize.Width, root.PreferredSize.Height);
+        };
         form.AcceptButton = save;
         form.CancelButton = cancel;
         form.ClientSize = new Size(524, root.PreferredSize.Height);

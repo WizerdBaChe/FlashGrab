@@ -42,15 +42,30 @@ internal static class ClipboardWriter
     }
 }
 
-/// <summary>輸出層:把框選畫面存成 PNG 到「圖片\FlashGrab」,回傳完整路徑。</summary>
+/// <summary>輸出層:把框選畫面存成 PNG/JPG 到「圖片\FlashGrab」,回傳完整路徑。</summary>
 internal static class ImageSaver
 {
-    public static string SavePng(System.Drawing.Bitmap bitmap)
+    public static string SavePng(System.Drawing.Bitmap bitmap) => Save(bitmap, "png", System.Drawing.Imaging.ImageFormat.Png);
+
+    public static string SaveJpg(System.Drawing.Bitmap bitmap)
+    {
+        // JPG 沒有透明度:先鋪白底,避免透明像素變黑。
+        using var flat = new System.Drawing.Bitmap(bitmap.Width, bitmap.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+        using (var g = System.Drawing.Graphics.FromImage(flat))
+        {
+            g.Clear(System.Drawing.Color.White);
+            g.DrawImage(bitmap, 0, 0, bitmap.Width, bitmap.Height);
+        }
+
+        return Save(flat, "jpg", System.Drawing.Imaging.ImageFormat.Jpeg);
+    }
+
+    private static string Save(System.Drawing.Bitmap bitmap, string ext, System.Drawing.Imaging.ImageFormat format)
     {
         string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "FlashGrab");
         Directory.CreateDirectory(dir);
-        string path = Path.Combine(dir, $"FlashGrab_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
-        bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+        string path = Path.Combine(dir, $"FlashGrab_{DateTime.Now:yyyyMMdd_HHmmss_fff}.{ext}");
+        bitmap.Save(path, format);
         return path;
     }
 }

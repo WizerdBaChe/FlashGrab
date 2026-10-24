@@ -19,13 +19,12 @@ internal sealed class OverlayForm : Form
     private bool _selecting;
     private bool _aiArmed; // 目前是否按住 Shift(AI 待命),用於即時視覺回饋
 
-    // 輪盤:拖曳中按一下 Ctrl 叫出;選取只看方向。
-    private bool _wheelOpen;
-    private Point _wheelCenter;
-    private int _wheelRadius;
-    private int _wheelHover = -1;
-    private string _wheelStatus = "";
+    // 輪盤:拖曳中按一下 Ctrl 叫出;選取只看方向。狀態全在 WheelSession,這裡只轉發事件與繪圖。
+    private readonly IReadOnlyList<WheelItem?> _loadout;
+    private WheelSession? _wheel;
     private bool _ctrlHeld;
+
+    private bool WheelOpen => _wheel is not null;
 
     /// <summary>框選結果(相對快照左上角的像素矩形)。未選取時為 null。</summary>
     public Rectangle? SelectedRegion { get; private set; }
@@ -37,9 +36,11 @@ internal sealed class OverlayForm : Form
     public bool UseAiRequested { get; private set; }
 
     /// <param name="aiAvailable">Tier 2 是否已啟用且設妥;true 時顯示「Shift = AI」提示並接受該修鍵。</param>
-    public OverlayForm(Bitmap snapshot, bool aiAvailable = false)
+    /// <param name="loadout">輪盤 8 格的配置;null = 預設配置。</param>
+    public OverlayForm(Bitmap snapshot, bool aiAvailable = false, IReadOnlyList<WheelItem?>? loadout = null)
     {
         _aiAvailable = aiAvailable;
+        _loadout = loadout ?? RadialWheel.ResolveLoadout(null, out _);
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -57,7 +58,7 @@ internal sealed class OverlayForm : Form
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
-        if (e.Button == MouseButtons.Left && _wheelOpen)
+        if (e.Button == MouseButtons.Left && WheelOpen)
         {
             // 輪盤開著時按下只是準備點選扇區,不重開框選。
         }
@@ -79,10 +80,13 @@ internal sealed class OverlayForm : Form
     {
         RefreshArmed();
 
-        if (_wheelOpen)
+        if (_wheel is not null)
         {
-            // 輪盤開著時框選凍結,滑鼠只用來指方向。
-            UpdateWheelHover(e.Location);
+            // 輪盤開著時框選凍結,滑鼠只用來指方向(群組格往外甩會展開二級輪盤)。
+            if (_wheel.Move(e.Location))
+            {
+                Invalidate();
+            }
         }
         else if (_selecting)
         {
@@ -95,32 +99,26 @@ internal sealed class OverlayForm : Form
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
-        if (e.Button == MouseButtons.Left && _wheelOpen)
+        if (e.Button == MouseButtons.Left && _wheel is not null)
         {
             _selecting = false;
-            UpdateWheelHover(e.Location);
-            if (_wheelHover >= 0)
+            var release = _wheel.Release(e.Location);
+            if (release.Outcome == WheelOutcome.Stay)
             {
-                var slot = RadialWheel.Slots[_wheelHover];
-                if (slot.Action is not { } action)
+                // 空格或不能用:輪盤留著,可再點一次;不能用時中心顯示原因。
+                if (_wheel.Status.Length > 0)
                 {
-                    base.OnMouseUp(e);
-                    return; // 空格不是選項:輪盤留著,可再點一次
-                }
-
-                if (UnavailableReason(action) is string reason)
-                {
-                    _wheelStatus = reason;
-                    Invalidate();
                     System.Media.SystemSounds.Beep.Play();
-                    base.OnMouseUp(e);
-                    return; // 不能用:說明原因,輪盤留著讓使用者改選
                 }
 
-                ChosenAction = action;
+                Invalidate();
+                base.OnMouseUp(e);
+                return;
             }
 
-            // 中心放開 = 不選輪盤,照原本規則(含放開時按住 Shift = AI)處理。
+            ChosenAction = release.Action;
+
+            // 第一層中心放開 = 不選輪盤,照原本規則(含放開時按住 Shift = AI)處理。
             SelectedRegion = _selection;
             UseAiRequested = ChosenAction is null && _aiAvailable && (ModifierKeys & Keys.Shift) == Keys.Shift;
             DialogResult = DialogResult.OK;
@@ -160,10 +158,16 @@ internal sealed class OverlayForm : Form
         else if (e.KeyCode == Keys.ControlKey && !_ctrlHeld)
         {
             _ctrlHeld = true; // 按住不放時鍵盤會連發 KeyDown,只認第一下
-            // 按一下 Ctrl:拖曳中且已有像樣的選區 → 開輪盤;輪盤開著 → 收回(回到框選)。
-            if (_wheelOpen)
+            // 按一下 Ctrl:拖曳中且已有像樣的選區 → 開輪盤;二級輪盤開著 → 退回第一層;
+            // 第一層開著 → 收回(回到框選)。
+            if (_wheel is not null)
             {
-                CloseWheel();
+                if (!_wheel.Back())
+                {
+                    _wheel = null;
+                }
+
+                Invalidate();
             }
             else if (_selecting && _selection.Width > 3 && _selection.Height > 3)
             {
@@ -181,31 +185,10 @@ internal sealed class OverlayForm : Form
     {
         float scale = DeviceDpi / 96f;
         var screen = RectangleToClient(Screen.FromPoint(PointToScreen(cursor)).Bounds);
-        _wheelRadius = (int)Math.Min(170 * scale, Math.Min(screen.Width, screen.Height) * 0.36);
-        _wheelCenter = RadialWheel.Place(cursor, screen, _wheelRadius);
-        _wheelOpen = true;
-        _wheelStatus = "";
-        UpdateWheelHover(cursor);
+        int radius = (int)Math.Min(170 * scale, Math.Min(screen.Width, screen.Height) * 0.36);
+        _wheel = new WheelSession(_loadout, UnavailableReason);
+        _wheel.Open(cursor, screen, radius);
         Invalidate();
-    }
-
-    private void CloseWheel()
-    {
-        _wheelOpen = false;
-        _wheelHover = -1;
-        _wheelStatus = "";
-        Invalidate();
-    }
-
-    private void UpdateWheelHover(Point p)
-    {
-        int next = RadialWheel.SectorAt(p.X - _wheelCenter.X, p.Y - _wheelCenter.Y, _wheelRadius * RadialWheel.DeadZoneRatio);
-        if (next != _wheelHover)
-        {
-            _wheelHover = next;
-            _wheelStatus = "";
-            Invalidate();
-        }
     }
 
     /// <summary>目前不能用的動作回傳原因(給使用者看);可用回 null。</summary>
@@ -259,51 +242,69 @@ internal sealed class OverlayForm : Form
             e.Graphics.FillRectangle(veil, client);
         }
 
-        if (_wheelOpen)
+        if (_wheel is not null)
         {
-            DrawWheel(e.Graphics);
+            DrawWheel(e.Graphics, _wheel);
         }
 
         DrawHint(e.Graphics, client);
     }
 
     /// <summary>
-    /// 輪盤:淺色半透明扇區,懸停格用框線色強調;中心寫懸停格的名稱與說明。
+    /// 輪盤:第一層;二級輪盤展開時第一層淡化,子輪盤疊在越過外圈的位置。
     /// </summary>
-    private void DrawWheel(Graphics g)
+    private void DrawWheel(Graphics g, WheelSession w)
     {
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-        float scale = DeviceDpi / 96f;
-        var c = new PointF(_wheelCenter.X, _wheelCenter.Y);
-        float outer = _wheelRadius, inner = (float)(_wheelRadius * RadialWheel.DeadZoneRatio);
-        float sweep = 360f / RadialWheel.SectorCount;
+        bool sub = w.Level == 2;
+        DrawRing(g, w.Center, w.Radius, w.Slots, w.Hover, dim: sub, status: sub ? "" : w.Status,
+            idleHint: "朝方向移動\n放開即選\n中心放開 = 照常複製", fontScale: 1f);
+        if (sub && w.Group is { } group)
+        {
+            using var tether = new Pen(Color.FromArgb(150, 255, 255, 255), 2f) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
+            g.DrawLine(tether, w.Center, w.SubCenter);
+            DrawRing(g, w.SubCenter, w.SubRadius, w.SubSlots, w.SubHover, dim: false, status: w.Status,
+                idleHint: $"{group.Label}\n中心放開 =\n{group.Children![0].Label}", fontScale: 0.92f);
+        }
+    }
 
-        using var idle = new SolidBrush(Color.FromArgb(225, 248, 248, 246));
-        using var empty = new SolidBrush(Color.FromArgb(120, 230, 230, 228));
-        using var disabled = new SolidBrush(Color.FromArgb(200, 225, 225, 222));
-        using var hover = new SolidBrush(Color.FromArgb(240, 214, 238, 252));
-        using var divider = new Pen(Color.FromArgb(160, 120, 120, 120), 1f);
-        using var accent = new Pen(Color.DeepSkyBlue, 4f * scale);
-        using var labelFont = new Font("Microsoft JhengHei UI", 10.5f, FontStyle.Bold);
-        using var centerFont = new Font("Microsoft JhengHei UI", 11f, FontStyle.Bold);
-        using var detailFont = new Font("Microsoft JhengHei UI", 9f);
-        using var ink = new SolidBrush(Color.FromArgb(34, 34, 34));
-        using var mute = new SolidBrush(Color.FromArgb(130, 130, 130));
+    private void DrawRing(Graphics g, Point center, int radius, IReadOnlyList<WheelItem?> slots, int hoverIndex,
+        bool dim, string status, string idleHint, float fontScale)
+    {
+        float scale = DeviceDpi / 96f;
+        var c = new PointF(center.X, center.Y);
+        float outer = radius, inner = (float)(radius * RadialWheel.DeadZoneRatio);
+        float sweep = 360f / RadialWheel.SectorCount;
+        int alpha = dim ? 110 : 225;
+
+        using var idle = new SolidBrush(Color.FromArgb(alpha, 248, 248, 246));
+        using var empty = new SolidBrush(Color.FromArgb(dim ? 60 : 120, 230, 230, 228));
+        using var disabled = new SolidBrush(Color.FromArgb(dim ? 90 : 200, 225, 225, 222));
+        using var hover = new SolidBrush(Color.FromArgb(dim ? 140 : 240, 214, 238, 252));
+        using var divider = new Pen(Color.FromArgb(dim ? 80 : 160, 120, 120, 120), 1f);
+        using var accent = new Pen(Color.FromArgb(dim ? 120 : 255, Color.DeepSkyBlue), 4f * scale);
+        using var labelFont = new Font("Microsoft JhengHei UI", 10.5f * fontScale, FontStyle.Bold);
+        using var centerFont = new Font("Microsoft JhengHei UI", 11f * fontScale, FontStyle.Bold);
+        using var detailFont = new Font("Microsoft JhengHei UI", 9f * fontScale);
+        using var ink = new SolidBrush(Color.FromArgb(dim ? 120 : 255, 34, 34, 34));
+        using var mute = new SolidBrush(Color.FromArgb(dim ? 100 : 255, 130, 130, 130));
+        using var warn = new SolidBrush(Color.Firebrick);
+        using var marker = new SolidBrush(Color.FromArgb(dim ? 90 : 200, 90, 90, 90));
         var centered = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
 
         for (int i = 0; i < RadialWheel.SectorCount; i++)
         {
-            var slot = RadialWheel.Slots[i];
-            bool isHover = i == _wheelHover && slot.Action is not null;
-            bool usable = slot.Action is { } a && UnavailableReason(a) is null;
-            // GDI+ 角度 0 = 右方、順時針;扇區 0 = 上方,所以 -90。
+            var item = slots[i];
+            bool isHover = i == hoverIndex && item is not null;
+            bool usable = item is not null && UnavailableReason(item.DefaultAction) is null;
+            // GDI+ 角度 0 = 右方、順時針;格子 0 = 上方,所以 -90。
             float start = -90f + i * sweep - sweep / 2f;
             using var path = new System.Drawing.Drawing2D.GraphicsPath();
             path.AddArc(c.X - outer, c.Y - outer, outer * 2, outer * 2, start, sweep);
             path.AddArc(c.X - inner, c.Y - inner, inner * 2, inner * 2, start + sweep, -sweep);
             path.CloseFigure();
-            g.FillPath(slot.Action is null ? empty : isHover ? hover : usable ? idle : disabled, path);
+            g.FillPath(item is null ? empty : isHover ? hover : usable ? idle : disabled, path);
             g.DrawPath(divider, path);
             if (isHover)
             {
@@ -311,42 +312,63 @@ internal sealed class OverlayForm : Form
                     outer * 2 - accent.Width, outer * 2 - accent.Width, start, sweep);
             }
 
-            if (slot.Action is not null)
+            if (item is null)
             {
-                var at = RadialWheel.Polar(c, (inner + outer) / 2, RadialWheel.SectorAngle(i));
-                g.DrawString(slot.Label, labelFont, usable ? ink : mute, at, centered);
+                continue;
+            }
+
+            var at = RadialWheel.Polar(c, (inner + outer) / 2, RadialWheel.SectorAngle(i));
+            var labelBox = new RectangleF(at.X - (outer - inner) * 0.5f, at.Y - 22 * scale, (outer - inner), 44 * scale);
+            g.DrawString(item.Label, labelFont, usable ? ink : mute, labelBox, centered);
+
+            if (item.IsGroup)
+            {
+                // 群組記號:外緣一個朝外的小三角,表示「往外甩還有一層」。
+                double a = RadialWheel.SectorAngle(i);
+                var tip = RadialWheel.Polar(c, outer - 4 * scale, a);
+                var left = RadialWheel.Polar(c, outer - 13 * scale, a - 0.07);
+                var right = RadialWheel.Polar(c, outer - 13 * scale, a + 0.07);
+                g.FillPolygon(marker, new[] { tip, left, right });
             }
         }
 
         // 中心:懸停格說明,或操作提示。
-        using var hub = new SolidBrush(Color.FromArgb(235, 255, 255, 255));
+        using var hub = new SolidBrush(Color.FromArgb(dim ? 120 : 235, 255, 255, 255));
         g.FillEllipse(hub, c.X - inner + 3, c.Y - inner + 3, (inner - 3) * 2, (inner - 3) * 2);
-        var box = new RectangleF(c.X - inner * 0.9f, c.Y - inner * 0.75f, inner * 1.8f, inner * 1.5f);
-        if (_wheelHover >= 0 && RadialWheel.Slots[_wheelHover] is { Action: { } act } s)
+        if (dim)
         {
-            string detail = _wheelStatus.Length > 0 ? _wheelStatus : UnavailableReason(act) ?? s.Detail;
+            return; // 被二級輪盤蓋住時不寫中心字,避免兩處說明打架
+        }
+
+        var box = new RectangleF(c.X - inner * 0.9f, c.Y - inner * 0.75f, inner * 1.8f, inner * 1.5f);
+        if (hoverIndex >= 0 && slots[hoverIndex] is { } s)
+        {
+            string? reason = UnavailableReason(s.DefaultAction);
+            string detail = status.Length > 0 ? status
+                : reason ?? (s.IsGroup ? $"往外甩展開 {s.Children!.Count} 項\n放開 = {s.Children[0].Label}" : s.Detail);
             g.DrawString(s.Label, centerFont, ink, new RectangleF(box.X, box.Y, box.Width, box.Height * 0.45f), centered);
-            using var warn = new SolidBrush(Color.Firebrick);
-            g.DrawString(detail, detailFont, _wheelStatus.Length > 0 || UnavailableReason(act) is not null ? warn : mute,
+            g.DrawString(detail, detailFont, status.Length > 0 || reason is not null ? warn : mute,
                 new RectangleF(box.X, box.Y + box.Height * 0.42f, box.Width, box.Height * 0.58f), centered);
         }
         else
         {
-            g.DrawString("朝方向移動\n放開即選\n中心放開 = 照常複製", detailFont, mute, box, centered);
+            g.DrawString(idleHint, detailFont, mute, box, centered);
         }
     }
 
     /// <summary>頂端置中提示:輪盤用法;AI 可用時另提示 Shift,按住 Shift 時切換為「AI 待命」橘字。</summary>
     private void DrawHint(Graphics g, Rectangle client)
     {
-        string hint = _wheelOpen
-            ? "輪盤:朝格子方向移動後放開 · 再按 Ctrl 收回 · Esc 取消"
+        string hint = _wheel is { Level: 2 }
+            ? "二級輪盤:朝格子方向放開 · 再按 Ctrl 回上一層 · Esc 取消"
+            : WheelOpen
+            ? "輪盤:朝格子方向移動後放開 · 有 ▲ 的格子往外甩展開 · 再按 Ctrl 收回 · Esc 取消"
             : _aiArmed
                 ? "● AI 增強模式 — 放開即用 AI 辨識"
                 : _aiAvailable
                     ? "拖曳中按一下 Ctrl = 輪盤 · 按住 Shift 放開 = AI 增強"
                     : "拖曳中按一下 Ctrl = 輪盤(更多輸出方式)";
-        Color fg = _aiArmed && !_wheelOpen ? Color.Orange : Color.White;
+        Color fg = _aiArmed && !WheelOpen ? Color.Orange : Color.White;
 
         using var font = new Font("Microsoft JhengHei UI", 11f, FontStyle.Bold);
         var size = g.MeasureString(hint, font);

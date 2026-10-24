@@ -27,6 +27,12 @@ internal sealed class Settings
     /// <summary>取字快捷鍵,如 "Win+Shift+C";null 或無法解析 = 預設值。</summary>
     public string? Hotkey { get; set; }
 
+    /// <summary>
+    /// 輪盤 8 格的配置(功能庫項目 id,0 = 正上方、順時針;null 元素 = 空格)。
+    /// 整個欄位 null = 預設配置;找不到的 id 啟動時變空格,不會讓輪盤壞掉。
+    /// </summary>
+    public string?[]? WheelLoadout { get; set; }
+
     /// <summary>是否已顯示過首次執行的歡迎視窗;之後啟動只剩托盤 toast,維持無感。</summary>
     public bool WelcomeShown { get; set; }
 

@@ -2,23 +2,36 @@ using System.Drawing;
 
 namespace FlashGrab.Capture;
 
-/// <summary>輪盤上可選的輸出動作。順序 = 扇區索引(0 = 正上方,順時針)。</summary>
+/// <summary>輪盤上可執行的輸出動作。</summary>
 internal enum WheelAction
 {
-    CopyText,      // N  依設定複製文字
-    AiText,        // NE AI 辨識(需已設定 Tier 2)
-    CopyOneLine,   // E  合併成一行
-    CopyImage,     // SE 複製框選圖片
-    SaveImage,     // S  存成 PNG
-    CopyKeepLines, // SW 保留原本換行
+    CopyText,      // 依設定複製文字
+    AiText,        // AI 辨識(需已設定 Tier 2)
+    CopyOneLine,   // 合併成一行
+    CopyImage,     // 複製框選圖片
+    SaveImage,     // 存成 PNG
+    CopyKeepLines, // 保留原本換行
+    SaveJpg,       // 存成 JPG
 }
 
-/// <summary>一格扇區的內容;Action 為 null 代表空格(畫出來但不可選)。</summary>
-internal sealed record WheelSlot(WheelAction? Action, string Label, string Detail);
+/// <summary>
+/// 功能庫裡的一個項目:葉節點(Action 有值)或群組(Children 有值,往外甩展開成二級輪盤)。
+/// 群組本身也可直接選:等於它的第一個子項(預設子項)。
+/// </summary>
+internal sealed record WheelItem(string Id, string Label, string Detail, WheelAction? Action = null, IReadOnlyList<WheelItem>? Children = null)
+{
+    public bool IsGroup => Children is { Count: > 0 };
+
+    /// <summary>選這一格最終會執行的動作:葉節點是自己,群組是預設子項。</summary>
+    public WheelAction DefaultAction => IsGroup ? Children![0].DefaultAction : Action!.Value;
+}
 
 /// <summary>
-/// 輪盤幾何(純函式,不碰 UI,可單獨測試)。
-/// 選取只看方向:超出中心死區後,角度決定扇區,沒有外圈上限 —— 甩過頭仍算選中。
+/// 輪盤模型與幾何(純函式,不碰 UI,可單獨測試)。
+/// 第一層固定 8 格(0 = 正上方,順時針);格子不會因項目增減而重新均分,
+/// 沒放東西的格子就是空格。放不下的項目留在功能庫,由設定畫面換上輪盤。
+/// 選取只看方向:超出中心死區後,角度決定格子,沒有外圈上限。
+/// 例外是群組格:沿它的方向越過外圈 <see cref="ExpandRatio"/> 倍時展開二級輪盤。
 /// </summary>
 internal static class RadialWheel
 {
@@ -27,20 +40,62 @@ internal static class RadialWheel
     /// <summary>死區半徑佔輪盤半徑的比例;移回這裡放開 = 不選任何格。</summary>
     public const double DeadZoneRatio = 0.42;
 
-    public static readonly IReadOnlyList<WheelSlot> Slots = new WheelSlot[]
+    /// <summary>群組格展開門檻:游標距中心達外圈半徑的這個倍數。</summary>
+    public const double ExpandRatio = 1.3;
+
+    /// <summary>二級輪盤半徑相對第一層的比例。</summary>
+    public const double SubRadiusRatio = 0.8;
+
+    private static readonly WheelItem CopyText = new("text.copy", "複製文字", "內建 OCR,照設定處理段落", WheelAction.CopyText);
+    private static readonly WheelItem OneLine = new("text.oneline", "合成一行", "去掉換行,貼進搜尋框或表單", WheelAction.CopyOneLine);
+    private static readonly WheelItem KeepLines = new("text.keeplines", "保留換行", "照畫面逐行複製", WheelAction.CopyKeepLines);
+    private static readonly WheelItem AiText = new("ai.text", "AI 辨識", "改用視覺模型(較慢)", WheelAction.AiText);
+    private static readonly WheelItem CopyImage = new("image.copy", "複製圖片", "不辨識,直接複製框選畫面", WheelAction.CopyImage);
+    private static readonly WheelItem SavePng = new("image.png", "存成 PNG", "存到 圖片\\FlashGrab", WheelAction.SaveImage);
+    private static readonly WheelItem SaveJpg = new("image.jpg", "存成 JPG", "檔案較小,存到 圖片\\FlashGrab", WheelAction.SaveJpg);
+
+    /// <summary>功能庫:所有可放上輪盤的項目(葉節點與群組)。新動作只要加進這裡。</summary>
+    public static readonly IReadOnlyList<WheelItem> Library = new[]
     {
-        new(WheelAction.CopyText, "複製文字", "內建 OCR,照設定處理段落"),
-        new(WheelAction.AiText, "AI 辨識", "改用視覺模型(較慢)"),
-        new(WheelAction.CopyOneLine, "合成一行", "去掉換行,貼進搜尋框或表單"),
-        new(WheelAction.CopyImage, "複製圖片", "不辨識,直接複製框選畫面"),
-        new(WheelAction.SaveImage, "存成 PNG", "存到 圖片\\FlashGrab"),
-        new(WheelAction.CopyKeepLines, "保留換行", "照畫面逐行複製"),
-        new(null, "", ""),
-        new(null, "", ""),
+        new WheelItem("group.text", "文字", "往外甩:複製/一行/保留換行", Children: new[] { CopyText, OneLine, KeepLines }),
+        new WheelItem("group.image", "圖片", "往外甩:PNG/複製/JPG", Children: new[] { SavePng, CopyImage, SaveJpg }),
+        CopyText, OneLine, KeepLines, AiText, CopyImage, SavePng, SaveJpg,
     };
 
     /// <summary>
-    /// 由游標相對中心的位移求扇區索引;落在死區回 -1。
+    /// 預設配置。位置沿用第一版(N 複製文字、NE AI、E 一行、SE 複製圖片、S 存 PNG、SW 保留換行),
+    /// 已練熟的方向不變;N 與 S 換成同位置的群組,直接放開仍是原本的動作。
+    /// </summary>
+    public static readonly IReadOnlyList<string?> DefaultLoadout = new string?[]
+    {
+        "group.text", "ai.text", "text.oneline", "image.copy", "group.image", "text.keeplines", null, null,
+    };
+
+    public static WheelItem? Find(string? id) =>
+        id is null ? null : Library.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.Ordinal));
+
+    /// <summary>
+    /// 把設定檔裡的配置轉成 8 格。null/長度不對 = 預設;找不到的 id 變空格並回報在 dropped。
+    /// </summary>
+    public static WheelItem?[] ResolveLoadout(IReadOnlyList<string?>? stored, out List<string> dropped)
+    {
+        dropped = new List<string>();
+        var source = stored is { Count: SectorCount } ? stored : DefaultLoadout;
+        var slots = new WheelItem?[SectorCount];
+        for (int i = 0; i < SectorCount; i++)
+        {
+            slots[i] = Find(source[i]);
+            if (slots[i] is null && source[i] is { } bad)
+            {
+                dropped.Add(bad);
+            }
+        }
+
+        return slots;
+    }
+
+    /// <summary>
+    /// 由游標相對中心的位移求格子索引;落在死區回 -1。
     /// 螢幕座標 y 向下,所以「上」是 dy &lt; 0。
     /// </summary>
     public static int SectorAt(double dx, double dy, double deadZoneRadius)
@@ -56,7 +111,14 @@ internal static class RadialWheel
         return ((index % SectorCount) + SectorCount) % SectorCount;
     }
 
-    /// <summary>扇區中心角(弧度,0 = 上,順時針)。</summary>
+    /// <summary>沿 slot 的方向越過外圈 ExpandRatio 倍時為 true(呼叫端再確認該格是群組)。</summary>
+    public static bool ShouldExpand(double dx, double dy, double outerRadius, int slot)
+    {
+        double reach = outerRadius * ExpandRatio;
+        return dx * dx + dy * dy >= reach * reach && SectorAt(dx, dy, 0) == slot;
+    }
+
+    /// <summary>格子中心角(弧度,0 = 上,順時針)。</summary>
     public static double SectorAngle(int index) => index * 2 * Math.PI / SectorCount;
 
     /// <summary>極座標轉螢幕座標。</summary>

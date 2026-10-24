@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Wheel model + session tests. Run from the repo root: dotnet run, project tests/WheelTests (exit 0 = all pass).
+       Passing the program argument "control" adds one deliberately wrong expectation to prove the suite can fail.
+       Evidence rung: 0 (example tests; the 8 directions and ±22.5° boundaries are enumerated, everything else is scenarios). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>CS8604;CS8625</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Capture\RadialWheel.cs" Link="RadialWheel.cs" />
+    <Compile Include="..\..\Capture\WheelSession.cs" Link="WheelSession.cs" />
+  </ItemGroup>
+</Project>
