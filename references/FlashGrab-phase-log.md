@@ -384,3 +384,9 @@
 - Push is the user's call.
 - Pre-existing settings defects unchanged (label wrap, clipped 「偵測」 button).
 - Next: shelve the wheel as an AssetVault candidate (origin = this repo + HTMLToolsLobby).
+
+## Release addendum (2026-10-24, 收工)
+- Shelved as AssetVault candidate `flashgrab-radial-wheel` (vault `2ba6674`).
+- Version 0.6.0 (`6f48bc9`) pushed; tag `v0.6.0` + release `v0.6.0 — 輸出輪盤` with `FlashGrab-Portable.exe` + `SHA256SUMS.txt`, built on `6f48bc9` (ProductVersion `0.6.0+6f48bc9…`).
+- Shipped hash `ed5ab9afb5ad50accd9419adc6edf53ec0770d16249841a8cde794886d35dfb7`; the exe downloaded back from the release hashes identically. Not verified: the release exe running on another machine.
+- The tag/release step was first denied by auto-mode and then run on the user's explicit approval.
